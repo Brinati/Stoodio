@@ -39,83 +39,82 @@ const App: React.FC = () => {
     useEffect(() => {
         setLoadingSession(true);
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-            try {
-                setSession(session);
-                if (session?.user) {
-                    // Fetch Profile
-                    const { data: profileData, error: profileError } = await supabase
-                        .from('profiles')
-                        .select('*')
-                        .eq('id', session.user.id)
-                        .single();
-                    
-                    if (profileError) {
-                        console.error('Error fetching profile:', profileError);
-                        setProfile(null);
-                    } else {
-                        setProfile(profileData);
-                    }
-
-                    // Fetch Generated Images
-                    const { data: imagesData, error: imagesError } = await supabase
-                        .from('generated_images')
-                        .select('*')
-                        .eq('user_id', session.user.id)
-                        .order('created_at', { ascending: false });
-                    
-                    if (imagesError) {
-                        console.error('Error fetching generated images:', imagesError);
-                    } else if (imagesData) {
-                        const loadedImages = imagesData.map(img => {
-                            const { data: { publicUrl } } = supabase.storage.from('generated_images').getPublicUrl(img.image_path);
-                            return {
-                                id: img.id,
-                                prompt: img.prompt,
-                                src: publicUrl,
-                                image_path: img.image_path,
-                            };
-                        });
-                        setGeneratedImages(loadedImages);
-                    }
-
-                    // Fetch Products
-                    const { data: productsData, error: productsError } = await supabase
-                        .from('products')
-                        .select('*')
-                        .eq('user_id', session.user.id)
-                        .order('created_at', { ascending: true });
-
-                    if (productsError) {
-                        console.error('Error fetching products:', productsError);
-                    } else if (productsData) {
-                        const loadedProducts = productsData.map(p => {
-                            const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(p.image_path);
-                            return {
-                                id: p.id,
-                                name: p.name,
-                                mimeType: p.mime_type,
-                                src: publicUrl,
-                                image_path: p.image_path,
-                            };
-                        });
-                        setProducts(loadedProducts);
-                    }
-
-                } else {
-                    setProfile(null);
-                    setProducts([]);
-                    setGeneratedImages([]);
-                }
-            } catch (err) {
-                console.error("Error in onAuthStateChange handler:", err);
-            } finally {
-                setLoadingSession(false);
-            }
+        // Fetch the initial session state to unblock the UI quickly.
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setSession(session);
+        }).catch(err => {
+            console.error("Error fetching initial session:", err);
+        }).finally(() => {
+            // This is crucial to prevent the app from being stuck on the loading screen.
+            setLoadingSession(false);
         });
-        
+
+        // Listen for future authentication events (login, logout).
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setSession(session);
+        });
+
         return () => subscription?.unsubscribe();
     }, []);
+
+    // This effect runs whenever the session object changes, fetching or clearing user data accordingly.
+    useEffect(() => {
+        const fetchUserData = async (userId: string) => {
+            try {
+                // Fetch Profile, Images, and Products in parallel for better performance.
+                const [profileRes, imagesRes, productsRes] = await Promise.all([
+                    supabase.from('profiles').select('*').eq('id', userId).single(),
+                    supabase.from('generated_images').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+                    supabase.from('products').select('*').eq('user_id', userId).order('created_at', { ascending: true })
+                ]);
+
+                // Handle Profile data
+                if (profileRes.error) {
+                    console.error('Error fetching profile:', profileRes.error);
+                    setProfile(null);
+                } else {
+                    setProfile(profileRes.data);
+                }
+
+                // Handle Generated Images data
+                if (imagesRes.error) {
+                    console.error('Error fetching generated images:', imagesRes.error);
+                } else if (imagesRes.data) {
+                    const loadedImages = imagesRes.data.map(img => {
+                        const { data: { publicUrl } } = supabase.storage.from('generated_images').getPublicUrl(img.image_path);
+                        return { id: img.id, prompt: img.prompt, src: publicUrl, image_path: img.image_path };
+                    });
+                    setGeneratedImages(loadedImages);
+                }
+
+                // Handle Products data
+                if (productsRes.error) {
+                    console.error('Error fetching products:', productsRes.error);
+                } else if (productsRes.data) {
+                    const loadedProducts = productsRes.data.map(p => {
+                        const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(p.image_path);
+                        return { id: p.id, name: p.name, mimeType: p.mime_type, src: publicUrl, image_path: p.image_path };
+                    });
+                    setProducts(loadedProducts);
+                }
+            } catch (error) {
+                console.error("Failed to fetch user data:", error);
+                // Reset state on error to avoid displaying stale or incomplete data.
+                setProfile(null);
+                setProducts([]);
+                setGeneratedImages([]);
+            }
+        };
+
+        if (session?.user) {
+            fetchUserData(session.user.id);
+        } else {
+            // If there's no session, clear all user-specific data.
+            setProfile(null);
+            setProducts([]);
+            setGeneratedImages([]);
+        }
+    }, [session]);
 
 
     const addProducts = useCallback((newProducts: Product[]) => {
