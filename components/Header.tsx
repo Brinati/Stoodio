@@ -1,6 +1,6 @@
 
 import React, { useContext } from 'react';
-import { AppContext } from '../App';
+import { AppContext } from '../context/AppContext';
 
 interface HeaderProps {
     onLogout: () => void;

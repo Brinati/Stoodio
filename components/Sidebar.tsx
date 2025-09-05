@@ -1,9 +1,10 @@
 
 
+
 import React, { useContext } from 'react';
 import { Page } from '../types';
 import { StudioIcon, ProductsIcon, PlansIcon, SettingsIcon, TokenIcon, AdminIcon, GalleryIcon } from './icons';
-import { AppContext } from '../App';
+import { AppContext } from '../context/AppContext';
 
 interface SidebarProps {
   activePage: Page;

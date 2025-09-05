@@ -1,4 +1,4 @@
-import React, { useState, createContext, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Page, Product, AppContextType, GeneratedImage, UserProfile } from './types';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -11,11 +11,10 @@ import RegisterPage from './components/RegisterPage';
 import { supabase } from './services/supabaseClient';
 import AdminPage from './components/admin/AdminPage';
 import Gallery from './components/Gallery';
+import { AppContext } from './context/AppContext';
 // FIX: Changed to a type-only import for `Session` to resolve TypeScript module resolution errors.
 import type { Session } from '@supabase/supabase-js';
 
-
-export const AppContext = createContext<AppContextType | null>(null);
 
 const PlaceholderPage: React.FC<{title: string}> = ({title}) => (
     <div className="flex items-center justify-center w-full h-full p-8 bg-gray-50">

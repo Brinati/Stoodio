@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useContext } from 'react';
-import { AppContext } from '../App';
+import { AppContext } from '../context/AppContext';
 import { Product } from '../types';
 import { UploadIcon } from './icons';
 import { supabase } from '../services/supabaseClient';

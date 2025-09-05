@@ -1,5 +1,5 @@
 import React, { useState, useContext, useMemo } from 'react';
-import { AppContext } from '../App';
+import { AppContext } from '../context/AppContext';
 import { Product, SnippetCategory, GeneratedImage } from '../types';
 import { CopyIcon, ImageIcon, WandIcon } from './icons';
 import { generateImage, enhancePrompt, ImageSource } from '../services/geminiService';
