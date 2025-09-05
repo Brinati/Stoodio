@@ -37,80 +37,80 @@ const App: React.FC = () => {
     const [loadingSession, setLoadingSession] = useState(true);
 
     useEffect(() => {
-        const fetchSession = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            setSession(session);
-            setLoadingSession(false);
-        };
+        setLoadingSession(true);
 
-        fetchSession();
-        
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-            setSession(session);
-            if (session?.user) {
-                // Fetch Profile
-                const { data: profileData, error: profileError } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', session.user.id)
-                    .single();
-                
-                if (profileError) {
-                    console.error('Error fetching profile:', profileError);
-                    setProfile(null);
+            try {
+                setSession(session);
+                if (session?.user) {
+                    // Fetch Profile
+                    const { data: profileData, error: profileError } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', session.user.id)
+                        .single();
+                    
+                    if (profileError) {
+                        console.error('Error fetching profile:', profileError);
+                        setProfile(null);
+                    } else {
+                        setProfile(profileData);
+                    }
+
+                    // Fetch Generated Images
+                    const { data: imagesData, error: imagesError } = await supabase
+                        .from('generated_images')
+                        .select('*')
+                        .eq('user_id', session.user.id)
+                        .order('created_at', { ascending: false });
+                    
+                    if (imagesError) {
+                        console.error('Error fetching generated images:', imagesError);
+                    } else if (imagesData) {
+                        const loadedImages = imagesData.map(img => {
+                            const { data: { publicUrl } } = supabase.storage.from('generated_images').getPublicUrl(img.image_path);
+                            return {
+                                id: img.id,
+                                prompt: img.prompt,
+                                src: publicUrl,
+                                image_path: img.image_path,
+                            };
+                        });
+                        setGeneratedImages(loadedImages);
+                    }
+
+                    // Fetch Products
+                    const { data: productsData, error: productsError } = await supabase
+                        .from('products')
+                        .select('*')
+                        .eq('user_id', session.user.id)
+                        .order('created_at', { ascending: true });
+
+                    if (productsError) {
+                        console.error('Error fetching products:', productsError);
+                    } else if (productsData) {
+                        const loadedProducts = productsData.map(p => {
+                            const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(p.image_path);
+                            return {
+                                id: p.id,
+                                name: p.name,
+                                mimeType: p.mime_type,
+                                src: publicUrl,
+                                image_path: p.image_path,
+                            };
+                        });
+                        setProducts(loadedProducts);
+                    }
+
                 } else {
-                    setProfile(profileData);
+                    setProfile(null);
+                    setProducts([]);
+                    setGeneratedImages([]);
                 }
-
-                // Fetch Generated Images
-                const { data: imagesData, error: imagesError } = await supabase
-                    .from('generated_images')
-                    .select('*')
-                    .eq('user_id', session.user.id)
-                    .order('created_at', { ascending: false });
-                
-                if (imagesError) {
-                    console.error('Error fetching generated images:', imagesError);
-                } else if (imagesData) {
-                    const loadedImages = imagesData.map(img => {
-                        const { data: { publicUrl } } = supabase.storage.from('generated_images').getPublicUrl(img.image_path);
-                        return {
-                            id: img.id,
-                            prompt: img.prompt,
-                            src: publicUrl,
-                            image_path: img.image_path,
-                        };
-                    });
-                    setGeneratedImages(loadedImages);
-                }
-
-                // Fetch Products
-                const { data: productsData, error: productsError } = await supabase
-                    .from('products')
-                    .select('*')
-                    .eq('user_id', session.user.id)
-                    .order('created_at', { ascending: true });
-
-                if (productsError) {
-                    console.error('Error fetching products:', productsError);
-                } else if (productsData) {
-                    const loadedProducts = productsData.map(p => {
-                        const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(p.image_path);
-                        return {
-                            id: p.id,
-                            name: p.name,
-                            mimeType: p.mime_type,
-                            src: publicUrl,
-                            image_path: p.image_path,
-                        };
-                    });
-                    setProducts(loadedProducts);
-                }
-
-            } else {
-                setProfile(null);
-                setProducts([]);
-                setGeneratedImages([]);
+            } catch (err) {
+                console.error("Error in onAuthStateChange handler:", err);
+            } finally {
+                setLoadingSession(false);
             }
         });
         
