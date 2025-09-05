@@ -1,6 +1,24 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+let ai: GoogleGenAI | null = null;
+
+// Lazily initialize the AI client to prevent app crash on load if API key is missing.
+const getAiClient = (): GoogleGenAI => {
+    if (ai) {
+        return ai;
+    }
+    
+    // The user's build environment (e.g., Netlify) needs to provide this environment variable.
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+        console.error("API_KEY environment variable not set. The application will not be able to connect to Google AI services.");
+        throw new Error("A chave de API do Google AI não está configurada. Por favor, contate o suporte.");
+    }
+
+    ai = new GoogleGenAI({ apiKey });
+    return ai;
+};
+
 
 export interface ImageSource {
     imageBase64: string;
@@ -9,6 +27,7 @@ export interface ImageSource {
 
 export const generateImage = async (prompt: string, referenceImage: ImageSource): Promise<{base64: string, mimeType: string} | null> => {
     try {
+        const aiClient = getAiClient();
         const imagePart = {
             inlineData: {
                 data: referenceImage.imageBase64,
@@ -20,7 +39,7 @@ export const generateImage = async (prompt: string, referenceImage: ImageSource)
             text: prompt,
         };
 
-        const response = await ai.models.generateContent({
+        const response = await aiClient.models.generateContent({
             model: 'gemini-2.5-flash-image-preview',
             contents: [{
                 role: 'user',
@@ -39,12 +58,17 @@ export const generateImage = async (prompt: string, referenceImage: ImageSource)
         return null;
     } catch (error) {
         console.error("Error generating image:", error);
-        throw new Error("Failed to generate image. Please check your prompt or API key.");
+        // Propagate the specific API key error message, otherwise show a generic one.
+        if (error instanceof Error && error.message.includes("A chave de API")) {
+             throw error;
+        }
+        throw new Error("Falha ao gerar a imagem. Verifique seu prompt ou a configuração da API.");
     }
 };
 
 export const enhancePrompt = async (prompt: string): Promise<string> => {
     try {
+        const aiClient = getAiClient();
         const systemInstruction = `Você é um otimizador de prompts para geração de imagens no Nano-banana.
 Receberá um prompt livre escrito pelo usuário.
 Sua tarefa é reescrever esse prompt em um único bloco de texto contínuo, sem caracteres especiais, sem aspas, sem bullets, sem colchetes ou parênteses.
@@ -74,7 +98,7 @@ Regras de Segurança:
 
 Escreva um prompt que impressione o Usuario.`;
         
-        const response = await ai.models.generateContent({
+        const response = await aiClient.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt,
             config: {
@@ -85,6 +109,9 @@ Escreva um prompt que impressione o Usuario.`;
         return response.text.trim();
     } catch (error) {
         console.error("Error enhancing prompt:", error);
-        throw new Error("Failed to enhance prompt with AI.");
+        if (error instanceof Error && error.message.includes("A chave de API")) {
+             throw error;
+        }
+        throw new Error("Falha ao aprimorar o prompt com a IA.");
     }
 };
