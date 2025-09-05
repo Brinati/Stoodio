@@ -1,8 +1,10 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 
-// FIX: Switched from `import.meta.env` to `process.env.API_KEY` to align with coding guidelines and resolve TypeScript errors.
-// As per guidelines, `process.env.API_KEY` is assumed to be available in the execution context.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+if (!process.env.API_KEY) {
+    console.warn("API_KEY environment variable not set. Using a placeholder. Please set your API key for the app to function.");
+}
+
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "YOUR_API_KEY_HERE" });
 
 export interface ImageSource {
     imageBase64: string;
@@ -22,12 +24,12 @@ export const generateImage = async (prompt: string, referenceImage: ImageSource)
             text: prompt,
         };
 
-        // The `contents` structure is updated to match the recommended format for single-turn multimodal prompts.
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image-preview',
-            contents: {
+            contents: [{
+                role: 'user',
                 parts: [imagePart, textPart],
-            },
+            }],
             config: {
                 responseModalities: [Modality.IMAGE, Modality.TEXT],
             },
@@ -57,7 +59,7 @@ Nunca adicione explicações ou quebras de linha, apenas retorne o prompt final 
 
 Padrões:
 - Se as instruções forem vagas, posicione o produto ou personagem em um cenário cotidiano que faça sentido.
-- Se estilo ou ambiente não definidos, assuma realismo casual UGC.
+- Se estilo ou ambiente não forem definidos, assuma realismo casual UGC.
 
 Princípios do Realismo UGC:
 - Aparência natural e realista.

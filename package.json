@@ -1,5 +1,5 @@
 {
-  "name": "stoodio-ai-app",
+  "name": "stoodio-ai-image-generator",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,20 +9,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/genai": "^1.17.0",
-    "@supabase/supabase-js": "^2.45.0",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "@google/genai": "^1.17.0",
+    "@supabase/supabase-js": "^2.45.0"
   },
   "devDependencies": {
-    "@fortawesome/fontawesome-free": "^6.5.2",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "@vitejs/plugin-react": "^4.2.0",
-    "autoprefixer": "^10.4.19",
-    "postcss": "^8.4.38",
-    "tailwindcss": "^3.4.3",
-    "typescript": "^5.0.2",
-    "vite": "^5.0.0"
+    "@types/node": "^22.14.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
   }
 }
