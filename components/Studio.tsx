@@ -5,6 +5,7 @@ import { CopyIcon, ImageIcon, WandIcon } from './icons';
 import { generateImage, enhancePrompt, ImageSource } from '../services/geminiService';
 import { supabase } from '../services/supabaseClient';
 import EditImageModal from './EditImageModal';
+import LowTokenModal from './LowTokenModal';
 
 const base64ToBlob = (base64: string, mimeType: string): Blob => {
     const byteCharacters = atob(base64);
@@ -24,6 +25,8 @@ const Studio: React.FC = () => {
     const [isEnhancing, setIsEnhancing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [editingImage, setEditingImage] = useState<GeneratedImage | null>(null);
+    const [isLowTokenModalOpen, setLowTokenModalOpen] = useState(false);
+    const [requiredTokens, setRequiredTokens] = useState(0);
 
     const snippetCategories: SnippetCategory[] = useMemo(() => [
         {
@@ -123,7 +126,8 @@ const Studio: React.FC = () => {
         
         const cost = selectedProducts.length * 16;
         if ((profile?.token_balance ?? 0) < cost) {
-            setError(`Você não tem tokens suficientes. Necessário: ${cost}, disponível: ${profile?.token_balance ?? 0}.`);
+            setRequiredTokens(cost);
+            setLowTokenModalOpen(true);
             return;
         }
 
@@ -252,6 +256,16 @@ const Studio: React.FC = () => {
     return (
         <>
         {editingImage && <EditImageModal image={editingImage} onClose={() => setEditingImage(null)} onEdit={handleEditImage} onDownload={downloadImage} />}
+        <LowTokenModal
+            isOpen={isLowTokenModalOpen}
+            onClose={() => setLowTokenModalOpen(false)}
+            onGoToPlans={() => {
+                setLowTokenModalOpen(false);
+                setActivePage('plans');
+            }}
+            requiredTokens={requiredTokens}
+            currentBalance={profile?.token_balance ?? 0}
+        />
         <div className="flex h-full bg-gray-50">
             <main className="flex-1 p-6 overflow-y-auto">
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
