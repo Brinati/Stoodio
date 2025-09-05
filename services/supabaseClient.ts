@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
-// FIX: Switched from `import.meta.env` to `process.env` to resolve TypeScript errors.
-// The execution environment is assumed to have these variables available.
+// FIX: Switched to process.env to access environment variables, resolving TypeScript
+// errors with `import.meta.env`. The vite.config.ts file has been updated to
+// expose these variables to the client-side code.
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
 
