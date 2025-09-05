@@ -1,3 +1,4 @@
+
 // FIX: Changed to a type-only import for `Session` to resolve TypeScript module resolution errors.
 import type { Session } from '@supabase/supabase-js';
 
