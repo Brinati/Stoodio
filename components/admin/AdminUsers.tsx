@@ -95,15 +95,15 @@ const CreateUserModal: React.FC<{
 };
 
 const UserListItem: React.FC<{ user: UserWithEmail }> = ({ user }) => (
-    <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 last:border-b-0">
+    <div className="flex flex-col items-start justify-between gap-4 p-4 bg-white border-b border-gray-200 sm:flex-row sm:items-center last:border-b-0">
         <div className="flex items-center">
-            <div className="flex items-center justify-center w-10 h-10 font-bold text-gray-600 bg-gray-200 rounded-full">
+            <div className="flex items-center justify-center flex-shrink-0 w-10 h-10 font-bold text-gray-600 bg-gray-200 rounded-full">
                 {user.full_name.charAt(0)}
             </div>
             <div className="ml-4">
                 <p className="font-semibold text-gray-800">{user.full_name}</p>
                 <p className="text-sm text-gray-500">{user.email || 'Email não disponível'}</p>
-                <div className="flex items-center mt-1 space-x-2">
+                <div className="flex flex-wrap items-center gap-2 mt-1">
                     <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${user.role === 'super_admin' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'}`}>
                         {user.role || 'user'}
                     </span>
@@ -111,9 +111,9 @@ const UserListItem: React.FC<{ user: UserWithEmail }> = ({ user }) => (
                 </div>
             </div>
         </div>
-        <div>
+        <div className="flex flex-shrink-0 self-end sm:self-auto gap-2">
             <button className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">Desativar</button>
-            <button className="px-3 py-1 ml-2 text-sm font-medium text-white bg-red-600 border border-red-600 rounded-md hover:bg-red-700">Excluir</button>
+            <button className="px-3 py-1 text-sm font-medium text-white bg-red-600 border border-red-600 rounded-md hover:bg-red-700">Excluir</button>
         </div>
     </div>
 );
@@ -169,7 +169,7 @@ const AdminUsers: React.FC = () => {
         <>
             {isCreateModalOpen && <CreateUserModal onClose={() => setCreateModalOpen(false)} onUserCreated={fetchUsers} />}
             <div className="p-6 bg-white border border-gray-200 rounded-lg">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
                     <div>
                         <h3 className="text-xl font-semibold text-gray-800">Usuários do Sistema</h3>
                         <p className="mt-1 text-sm text-gray-600">Gerencie usuários e suas permissões</p>

@@ -106,7 +106,7 @@ const Gallery: React.FC = () => {
     return (
         <>
             {editingImage && <EditImageModal image={editingImage} onClose={() => setEditingImage(null)} onEdit={handleEditImage} onDownload={downloadImage} />}
-            <div className="p-8 bg-gray-50 min-h-full">
+            <div className="p-4 md:p-8 bg-gray-50 min-h-full">
                 <h1 className="text-3xl font-bold text-gray-800">Galeria de Imagens</h1>
                 <p className="mt-1 text-gray-600">Explore, edite e baixe todas as imagens que você gerou.</p>
 

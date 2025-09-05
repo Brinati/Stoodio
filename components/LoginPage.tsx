@@ -1,5 +1,6 @@
 
 
+
 import React, { useState } from 'react';
 import { supabase } from '../services/supabaseClient';
 
@@ -30,7 +31,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onGoToRegister }) => {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
+    <div className="flex items-center justify-center min-h-screen px-4 py-12 bg-gray-100 sm:px-6 lg:px-8">
       <div className="w-full max-w-md p-8 space-y-8 bg-white rounded-lg shadow-md">
         <div className="text-center">
             <img src="https://iudoo.com.br/wp-content/uploads/2025/09/Logo-Stoodio.png" alt="Stoodio Logo" className="h-10 mx-auto mb-4" />

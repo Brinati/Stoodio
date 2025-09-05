@@ -47,15 +47,15 @@ const EditImageModal: React.FC<EditImageModalProps> = ({ image, onClose, onEdit,
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60" onClick={onClose}>
-            <div className="relative w-full max-w-4xl p-8 bg-white rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-60" onClick={onClose}>
+            <div className="relative w-full max-w-4xl p-6 bg-white rounded-lg shadow-xl md:p-8" onClick={e => e.stopPropagation()}>
                 <button onClick={onClose} className="absolute text-3xl top-4 right-5 text-gray-400 hover:text-gray-600">&times;</button>
-                <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-8">
                     {/* Image Preview Column */}
                     <div className="flex flex-col">
                         <h3 className="text-xl font-semibold text-gray-800">Visualizar Imagem</h3>
                         <div className="flex-grow mt-4 flex items-center justify-center p-4 border rounded-md bg-gray-50">
-                            <img src={image.src} alt="Editing preview" className="object-contain w-full rounded-md max-h-[400px]" />
+                            <img src={image.src} alt="Editing preview" className="object-contain w-full rounded-md max-h-[300px] md:max-h-[400px]" />
                         </div>
                          <button 
                             onClick={() => onDownload(image.src, 'stoodio-image.png')} 
@@ -71,7 +71,7 @@ const EditImageModal: React.FC<EditImageModalProps> = ({ image, onClose, onEdit,
                             <textarea
                                 value={prompt}
                                 onChange={(e) => setPrompt(e.target.value)}
-                                className="w-full h-full p-3 text-gray-700 bg-white border border-gray-300 rounded-md focus:ring-amber-500 focus:border-amber-500 min-h-[200px]"
+                                className="w-full h-full p-3 text-gray-700 bg-white border border-gray-300 rounded-md focus:ring-amber-500 focus:border-amber-500 min-h-[150px] md:min-h-[200px]"
                             />
                             <div className="flex justify-end mt-2">
                                 <button

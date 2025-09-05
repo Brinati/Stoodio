@@ -42,7 +42,7 @@ const AdminPage = () => {
     };
     
     return (
-        <div className="p-8 bg-gray-50 min-h-full">
+        <div className="p-4 md:p-8 bg-gray-50 min-h-full">
             <div className="max-w-7xl mx-auto">
                 <div className="flex justify-between items-center">
                     <div>

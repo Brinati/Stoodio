@@ -38,7 +38,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onGoToLogin }) => {
 
       <main>
         {/* Hero Section */}
-        <section className="bg-gray-50 pt-32 pb-16 md:pb-24 overflow-hidden">
+        <section className="bg-gray-50 pt-24 pb-16 md:pt-32 md:pb-24 overflow-hidden">
           <div className="container mx-auto px-6">
             <div className="grid md:grid-cols-2 gap-8 items-center">
               <div className="text-center md:text-left">
@@ -48,7 +48,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onGoToLogin }) => {
                   </svg>
                   Powered by • iudoo Agencia IA
                 </div>
-                <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-gray-900 leading-tight">
+                <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-gray-900 leading-tight">
                   O estúdio criativo<br/>
                   <span className="text-yellow-500">automatizado</span>
                 </h1>

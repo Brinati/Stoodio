@@ -36,6 +36,8 @@ const App: React.FC = () => {
     const [logo, setLogo] = useState<Product | null>(null);
     const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
     const [loadingSession, setLoadingSession] = useState(true);
+    const [isSidebarOpen, setSidebarOpen] = useState(false);
+
 
     useEffect(() => {
         setLoadingSession(true);
@@ -256,9 +258,9 @@ const App: React.FC = () => {
     return (
         <AppContext.Provider value={{ session, profile, products, logo, addProducts, clearProducts, addLogo, removeLogo, generatedImages, addGeneratedImage, deductTokens, setActivePage }}>
             <div className="flex h-screen bg-gray-100">
-                <Sidebar activePage={activePage} setActivePage={setActivePage} />
+                <Sidebar activePage={activePage} setActivePage={setActivePage} isOpen={isSidebarOpen} setOpen={setSidebarOpen} />
                 <div className="flex flex-col flex-1 w-0 h-full">
-                    <Header onLogout={handleLogout} />
+                    <Header onLogout={handleLogout} onMenuClick={() => setSidebarOpen(true)} />
                     <div className="flex-1 overflow-auto">
                       {renderPage()}
                     </div>

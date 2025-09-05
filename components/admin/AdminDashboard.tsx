@@ -46,7 +46,7 @@ const AdminDashboard: React.FC = () => {
                 <StatCard icon={<StatusCardIcon />} title="Status" value={stats.status.text} subtitle={stats.status.label} />
             </div>
 
-            <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-6 mt-8 lg:grid-cols-2">
                 <ChartPlaceholder title="Evolução de Novos Usuários" />
                 <ChartPlaceholder title="Imagens Criadas" />
             </div>

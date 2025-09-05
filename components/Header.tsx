@@ -1,17 +1,24 @@
 
+
 import React, { useContext } from 'react';
 import { AppContext } from '../context/AppContext';
 
 interface HeaderProps {
     onLogout: () => void;
+    onMenuClick: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ onLogout }) => {
+const Header: React.FC<HeaderProps> = ({ onLogout, onMenuClick }) => {
     const { profile } = useContext(AppContext)!;
 
     return (
         <header className="flex items-center justify-between p-4 bg-white border-b border-gray-200">
-            <div>
+            <div className="flex items-center">
+                <button onClick={onMenuClick} className="p-1 mr-3 text-gray-600 rounded-md lg:hidden hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-amber-500" aria-label="Open sidebar">
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                </button>
                 <h1 className="text-xl font-semibold text-gray-800">{profile?.full_name || 'Usuário'}</h1>
             </div>
             <div className="flex items-center space-x-4">

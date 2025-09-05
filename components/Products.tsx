@@ -1,4 +1,5 @@
 
+
 import React, { useState, useCallback, useContext } from 'react';
 import { AppContext } from '../context/AppContext';
 import { Product } from '../types';
@@ -252,7 +253,7 @@ const Products: React.FC = () => {
     }, [products, session]);
 
     return (
-        <div className="p-8 bg-gray-50 min-h-full">
+        <div className="p-4 md:p-8 bg-gray-50 min-h-full">
             <h1 className="text-3xl font-bold text-gray-800">Upload de Produtos e Logo</h1>
             <p className="mt-1 text-gray-600">Faça upload das imagens dos seus produtos e da sua marca.</p>
 

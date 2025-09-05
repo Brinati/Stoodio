@@ -267,7 +267,7 @@ const Studio: React.FC = () => {
             currentBalance={profile?.token_balance ?? 0}
         />
         <div className="flex h-full bg-gray-50">
-            <main className="flex-1 p-6 overflow-y-auto">
+            <main className="flex-1 p-4 md:p-6 overflow-y-auto">
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
                     {/* Left Column */}
                     <div className="lg:col-span-3">
@@ -369,7 +369,7 @@ const Studio: React.FC = () => {
 
                     {/* Right Column */}
                     <div className="lg:col-span-2">
-                        <div className="sticky top-6">
+                        <div className="lg:sticky lg:top-6">
                              <div className="p-6 bg-white border border-gray-200 rounded-lg">
                                 <h2 className="text-xl font-semibold text-gray-800">Imagens Geradas</h2>
                                 <p className="mt-1 text-sm text-gray-500">As 6 imagens mais recentes</p>
@@ -389,7 +389,7 @@ const Studio: React.FC = () => {
                                 )}
 
                                 {generatedImages.length > 0 && (
-                                     <div className="grid grid-cols-2 gap-4 mt-4 max-h-[70vh] overflow-y-auto pr-2">
+                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 max-h-[70vh] overflow-y-auto pr-2">
                                         {generatedImages.slice(0, 6).map(image => (
                                              <div key={image.id} className="relative overflow-hidden border border-gray-200 rounded-lg group">
                                                  <img src={image.src} alt={image.prompt} className="object-cover w-full h-auto cursor-pointer" onClick={() => setEditingImage(image)} />

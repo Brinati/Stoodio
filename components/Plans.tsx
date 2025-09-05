@@ -93,7 +93,7 @@ const Plans: React.FC = () => {
     };
 
     return (
-        <div className="p-8 bg-gray-50 min-h-full">
+        <div className="p-4 md:p-8 bg-gray-50 min-h-full">
             <div className="max-w-5xl mx-auto">
                 {/* Token Summary */}
                 <div className="p-6 text-center bg-white border border-yellow-200 rounded-lg shadow-sm" style={{ background: 'linear-gradient(to right, #fefce8, #fffbeb)'}}>
