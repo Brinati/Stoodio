@@ -1,17 +1,8 @@
-// FIX: Added vite/client type reference to correctly type `import.meta.env`.
-/// <reference types="vite/client" />
-
 import { GoogleGenAI, Modality } from "@google/genai";
 
-// The API key is now read from Vite's environment variables, which is the correct
-// method for client-side applications. This resolves the "blank screen" issue in production.
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-
-if (!apiKey) {
-    throw new Error("VITE_GEMINI_API_KEY is not set. Please check your environment variables.");
-}
-
-const ai = new GoogleGenAI({ apiKey });
+// FIX: Switched from `import.meta.env` to `process.env.API_KEY` to align with coding guidelines and resolve TypeScript errors.
+// As per guidelines, `process.env.API_KEY` is assumed to be available in the execution context.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export interface ImageSource {
     imageBase64: string;
@@ -66,7 +57,7 @@ Nunca adicione explicações ou quebras de linha, apenas retorne o prompt final 
 
 Padrões:
 - Se as instruções forem vagas, posicione o produto ou personagem em um cenário cotidiano que faça sentido.
-- Se estilo ou ambiente não forem definidos, assuma realismo casual UGC.
+- Se estilo ou ambiente não definidos, assuma realismo casual UGC.
 
 Princípios do Realismo UGC:
 - Aparência natural e realista.
