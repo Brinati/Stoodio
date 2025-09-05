@@ -24,6 +24,117 @@ const base64ToBlob = (base64: string, mimeType: string): Blob => {
     return new Blob([byteArray], { type: mimeType });
 };
 
+const LogoUploader: React.FC = () => {
+    const { logo, addLogo, removeLogo, session } = useContext(AppContext)!;
+    const [isUploading, setIsUploading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const handleLogoChange = async (file: File | null) => {
+        if (!file) return;
+        setError(null);
+
+        if (file.size > 2 * 1024 * 1024) { // 2MB limit
+            setError(`O arquivo ${file.name} excede o limite de 2MB.`);
+            return;
+        }
+
+        setIsUploading(true);
+        try {
+            if (!session?.user) throw new Error("Usuário não autenticado.");
+
+            const logoData = {
+                name: 'logo',
+                imageBase64: await fileToBase64(file),
+                mimeType: file.type,
+                type: 'logo' as const,
+            };
+
+            const blob = base64ToBlob(logoData.imageBase64, logoData.mimeType);
+            const fileExt = logoData.mimeType.split('/')[1] || 'png';
+            const fileName = `logo-${crypto.randomUUID()}.${fileExt}`;
+            const filePath = `${session.user.id}/${fileName}`;
+
+            const { error: uploadError } = await supabase.storage.from('products').upload(filePath, blob);
+            if (uploadError) throw uploadError;
+
+            const { data: dbData, error: dbError } = await supabase
+                .from('products')
+                .insert({
+                    user_id: session.user.id,
+                    name: logoData.name,
+                    image_path: filePath,
+                    mime_type: logoData.mimeType,
+                    type: 'logo',
+                })
+                .select()
+                .single();
+            if (dbError) throw dbError;
+
+            const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(filePath);
+
+            const savedLogo: Product = {
+                id: dbData.id,
+                name: logoData.name,
+                mimeType: logoData.mimeType,
+                imageBase64: logoData.imageBase64,
+                src: publicUrl,
+                image_path: filePath,
+                type: 'logo'
+            };
+            
+            await addLogo(savedLogo);
+
+        } catch (err: any) {
+            setError(err.message || "Falha ao salvar o logo.");
+            console.error(err);
+        } finally {
+            setIsUploading(false);
+        }
+    };
+    
+    return (
+        <div className="p-6 bg-white border border-gray-200 rounded-lg h-full">
+            <h2 className="text-xl font-semibold text-gray-700">Logo da Marca</h2>
+            <p className="mt-1 text-sm text-gray-500">Faça o upload do seu logo para usá-lo nas gerações.</p>
+            <div className="mt-4">
+                {logo ? (
+                    <div className="flex items-center gap-4 p-4 border rounded-lg">
+                        <img src={logo.src} alt="Logo" className="w-16 h-16 object-contain" />
+                        <div className="flex-grow">
+                            <p className="font-semibold">Logo atual</p>
+                            <p className="text-xs text-gray-500 truncate">{logo.image_path?.split('/').pop()}</p>
+                        </div>
+                        <button onClick={removeLogo} className="flex-shrink-0 text-sm font-medium text-red-600 hover:text-red-800">
+                           Remover
+                        </button>
+                    </div>
+                ) : (
+                    <label 
+                        htmlFor="logo-upload" 
+                        className="relative flex flex-col items-center justify-center w-full h-40 border-2 border-dashed rounded-lg cursor-pointer border-gray-300 bg-gray-50 hover:bg-gray-100"
+                    >
+                         {isUploading ? (
+                            <div className="text-center">
+                                <div className="w-8 h-8 mx-auto border-2 border-t-2 rounded-full border-t-amber-500 border-gray-200 animate-spin"></div>
+                                <p className="mt-2 text-sm text-gray-500">Enviando...</p>
+                            </div>
+                        ) : (
+                             <div className="text-center">
+                                <UploadIcon className="w-10 h-10 mx-auto text-gray-400" />
+                                <p className="mt-2 text-sm text-gray-500">
+                                    <span className="font-semibold text-amber-600">Escolher logo</span> ou arraste
+                                </p>
+                            </div>
+                        )}
+                        <input id="logo-upload" name="logo-upload" type="file" className="sr-only" accept="image/png, image/jpeg, image/svg+xml" onChange={(e) => handleLogoChange(e.target.files?.[0] || null)} disabled={isUploading} />
+                    </label>
+                )}
+                {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+            </div>
+        </div>
+    );
+};
+
 
 const Products: React.FC = () => {
     const { products, addProducts, clearProducts, session } = useContext(AppContext)!;
@@ -41,7 +152,7 @@ const Products: React.FC = () => {
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
             if (products.length + validFiles.length >= 7) {
-                localError = "Você pode enviar no máximo 7 imagens.";
+                localError = "Você pode enviar no máximo 7 imagens de produto.";
                 break;
             }
             if (file.size > 2 * 1024 * 1024) { // 2MB limit
@@ -85,6 +196,7 @@ const Products: React.FC = () => {
                             name: productData.name,
                             image_path: filePath,
                             mime_type: productData.mimeType,
+                            type: 'product',
                         })
                         .select()
                         .single();
@@ -100,6 +212,7 @@ const Products: React.FC = () => {
                         imageBase64: productData.imageBase64,
                         src: publicUrl,
                         image_path: filePath,
+                        type: 'product',
                     });
                 }
                 addProducts(savedProducts);
@@ -140,44 +253,47 @@ const Products: React.FC = () => {
 
     return (
         <div className="p-8 bg-gray-50 min-h-full">
-            <h1 className="text-3xl font-bold text-gray-800">Upload de Produtos</h1>
-            <p className="mt-1 text-gray-600">Faça upload das imagens dos seus produtos</p>
+            <h1 className="text-3xl font-bold text-gray-800">Upload de Produtos e Logo</h1>
+            <p className="mt-1 text-gray-600">Faça upload das imagens dos seus produtos e da sua marca.</p>
 
             <div className="p-4 mt-6 text-sm text-blue-800 bg-blue-100 border border-blue-200 rounded-lg">
                 <i className="fas fa-info-circle mr-2"></i>
                 <strong>Dica para melhores resultados:</strong> Para a IA, use fotos bem focadas com fundo branco ou transparente. Isso permite que a IA identifique melhor o produto e gere imagens mais precisas.
             </div>
             
-            <div className="mt-8">
-                <h2 className="text-xl font-semibold text-gray-700">Upload de Produtos</h2>
-                <div className="p-6 mt-4 bg-white border border-gray-200 rounded-lg">
-                    <label 
-                        htmlFor="file-upload" 
-                        className={`relative flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-lg cursor-pointer ${isDragging ? 'border-amber-500 bg-amber-50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100'}`}
-                        onDragEnter={handleDragEnter}
-                        onDragLeave={handleDragLeave}
-                        onDragOver={handleDragOver}
-                        onDrop={handleDrop}
-                    >
-                        {isUploading ? (
-                            <div className="text-center">
-                                <div className="w-12 h-12 mx-auto border-4 border-t-4 rounded-full border-t-amber-500 border-gray-200 animate-spin"></div>
-                                <h3 className="mt-4 text-lg font-medium text-gray-700">Salvando produtos...</h3>
-                                <p className="mt-1 text-sm text-gray-500">Aguarde um momento.</p>
-                            </div>
-                        ) : (
-                            <div className="text-center">
-                                <UploadIcon className="w-12 h-12 mx-auto text-gray-400" />
-                                <h3 className="mt-2 text-lg font-medium text-gray-700">Selecione suas imagens</h3>
-                                <p className="mt-1 text-sm text-gray-500">Até 7 imagens, máximo 2MB cada</p>
-                                <p className="mt-4 text-sm text-gray-500">
-                                    <span className="font-semibold text-amber-600">Escolher arquivos</span> ou arraste e solte
-                                </p>
-                            </div>
-                        )}
-                        <input id="file-upload" name="file-upload" type="file" className="sr-only" multiple accept="image/png, image/jpeg" onChange={(e) => handleFileChange(e.target.files)} disabled={isUploading} />
-                    </label>
-                    {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
+                <div className="lg:col-span-1">
+                    <LogoUploader />
+                </div>
+                <div className="lg:col-span-2">
+                    <div className="p-6 bg-white border border-gray-200 rounded-lg h-full">
+                        <h2 className="text-xl font-semibold text-gray-700">Seus Produtos</h2>
+                        <label 
+                            htmlFor="file-upload" 
+                            className={`relative flex flex-col items-center justify-center w-full h-40 mt-4 border-2 border-dashed rounded-lg cursor-pointer ${isDragging ? 'border-amber-500 bg-amber-50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100'}`}
+                            onDragEnter={handleDragEnter}
+                            onDragLeave={handleDragLeave}
+                            onDragOver={handleDragOver}
+                            onDrop={handleDrop}
+                        >
+                            {isUploading ? (
+                                <div className="text-center">
+                                    <div className="w-8 h-8 mx-auto border-2 border-t-2 rounded-full border-t-amber-500 border-gray-200 animate-spin"></div>
+                                    <h3 className="mt-2 text-sm font-medium text-gray-700">Enviando produtos...</h3>
+                                </div>
+                            ) : (
+                                <div className="text-center">
+                                    <UploadIcon className="w-10 h-10 mx-auto text-gray-400" />
+                                    <p className="mt-2 text-sm text-gray-500">
+                                        <span className="font-semibold text-amber-600">Escolher arquivos</span> ou arraste e solte
+                                    </p>
+                                    <p className="mt-1 text-xs text-gray-500">Até 7 imagens, máximo 2MB cada</p>
+                                </div>
+                            )}
+                            <input id="file-upload" name="file-upload" type="file" className="sr-only" multiple accept="image/png, image/jpeg" onChange={(e) => handleFileChange(e.target.files)} disabled={isUploading} />
+                        </label>
+                        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+                    </div>
                 </div>
             </div>
 

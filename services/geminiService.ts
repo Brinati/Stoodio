@@ -35,8 +35,10 @@ export const generateImage = async (prompt: string, referenceImage: ImageSource)
             },
         };
 
+        const finalPrompt = `Use a imagem fornecida como o objeto principal. A imagem contém um produto. Coloque este produto exato em uma nova cena de acordo com a seguinte descrição. Não altere a aparência, embalagem ou texto do produto. A descrição é: ${prompt}`;
+
         const textPart = {
-            text: prompt,
+            text: finalPrompt,
         };
 
         const response = await aiClient.models.generateContent({

@@ -33,6 +33,7 @@ const App: React.FC = () => {
     const [authView, setAuthView] = useState<AuthView>('landing');
     const [activePage, setActivePage] = useState<Page>('studio');
     const [products, setProducts] = useState<Product[]>([]);
+    const [logo, setLogo] = useState<Product | null>(null);
     const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
     const [loadingSession, setLoadingSession] = useState(true);
 
@@ -62,10 +63,11 @@ const App: React.FC = () => {
         const fetchUserData = async (userId: string) => {
             try {
                 // Fetch Profile, Images, and Products in parallel for better performance.
-                const [profileRes, imagesRes, productsRes] = await Promise.all([
+                const [profileRes, imagesRes, productsRes, logoRes] = await Promise.all([
                     supabase.from('profiles').select('*').eq('id', userId).single(),
                     supabase.from('generated_images').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
-                    supabase.from('products').select('*').eq('user_id', userId).order('created_at', { ascending: true })
+                    supabase.from('products').select('*').eq('user_id', userId).eq('type', 'product').order('created_at', { ascending: true }),
+                    supabase.from('products').select('*').eq('user_id', userId).eq('type', 'logo').single()
                 ]);
 
                 // Handle Profile data
@@ -91,17 +93,29 @@ const App: React.FC = () => {
                 if (productsRes.error) {
                     console.error('Error fetching products:', productsRes.error);
                 } else if (productsRes.data) {
-                    const loadedProducts = productsRes.data.map(p => {
+                    // FIX: Explicitly type `loadedProducts` as `Product[]` to provide type context to the map function, ensuring the 'type' property is correctly inferred as a literal type.
+                    const loadedProducts: Product[] = productsRes.data.map(p => {
                         const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(p.image_path);
-                        return { id: p.id, name: p.name, mimeType: p.mime_type, src: publicUrl, image_path: p.image_path };
+                        return { id: p.id, name: p.name, mimeType: p.mime_type, src: publicUrl, image_path: p.image_path, type: 'product' };
                     });
                     setProducts(loadedProducts);
                 }
+                
+                // Handle Logo data
+                if (logoRes.error && logoRes.error.code !== 'PGRST116') { // Ignore 'single row not found' error
+                    console.error('Error fetching logo:', logoRes.error);
+                    setLogo(null);
+                } else if (logoRes.data) {
+                    const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(logoRes.data.image_path);
+                    setLogo({ id: logoRes.data.id, name: logoRes.data.name, mimeType: logoRes.data.mime_type, src: publicUrl, image_path: logoRes.data.image_path, type: 'logo' });
+                }
+
             } catch (error) {
                 console.error("Failed to fetch user data:", error);
                 // Reset state on error to avoid displaying stale or incomplete data.
                 setProfile(null);
                 setProducts([]);
+                setLogo(null);
                 setGeneratedImages([]);
             }
         };
@@ -112,6 +126,7 @@ const App: React.FC = () => {
             // If there's no session, clear all user-specific data.
             setProfile(null);
             setProducts([]);
+            setLogo(null);
             setGeneratedImages([]);
         }
     }, [session]);
@@ -141,6 +156,29 @@ const App: React.FC = () => {
             // Optionally: show an error message to the user
         }
     }, [products, session]);
+
+    const addLogo = async (newLogo: Product) => {
+        if (logo) {
+            await removeLogo();
+        }
+        setLogo(newLogo);
+    };
+
+    const removeLogo = async () => {
+        if (!logo || !session?.user) return;
+        try {
+            const { image_path, id } = logo;
+            if (image_path) {
+                const { error: storageError } = await supabase.storage.from('products').remove([image_path]);
+                if (storageError) throw storageError;
+            }
+            const { error: dbError } = await supabase.from('products').delete().eq('id', id);
+            if (dbError) throw dbError;
+            setLogo(null);
+        } catch (error) {
+            console.error("Failed to remove logo:", error);
+        }
+    };
 
     const addGeneratedImage = useCallback((image: GeneratedImage) => {
         setGeneratedImages(prev => [image, ...prev]);
@@ -177,6 +215,7 @@ const App: React.FC = () => {
             setSession(null);
             setProfile(null);
             setProducts([]);
+            setLogo(null);
             setGeneratedImages([]);
             setActivePage('studio');
             setAuthView('landing'); // Redirect to landing page
@@ -215,7 +254,7 @@ const App: React.FC = () => {
     }
 
     return (
-        <AppContext.Provider value={{ session, profile, products, addProducts, clearProducts, generatedImages, addGeneratedImage, deductTokens }}>
+        <AppContext.Provider value={{ session, profile, products, logo, addProducts, clearProducts, addLogo, removeLogo, generatedImages, addGeneratedImage, deductTokens, setActivePage }}>
             <div className="flex h-screen bg-gray-100">
                 <Sidebar activePage={activePage} setActivePage={setActivePage} />
                 <div className="flex flex-col flex-1 w-0 h-full">

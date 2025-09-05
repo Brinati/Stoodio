@@ -5,6 +5,7 @@ export interface Product {
   id: string;
   name: string;
   mimeType: string;
+  type: 'product' | 'logo';
   imageBase64?: string;
   src?: string;
   image_path?: string;
@@ -45,9 +46,13 @@ export interface AppContextType {
   session: Session | null;
   profile: UserProfile | null;
   products: Product[];
+  logo: Product | null;
   addProducts: (newProducts: Product[]) => void;
   clearProducts: () => Promise<void>;
+  addLogo: (newLogo: Product) => Promise<void>;
+  removeLogo: () => Promise<void>;
   generatedImages: GeneratedImage[];
   addGeneratedImage: (image: GeneratedImage) => void;
   deductTokens: (amount: number) => Promise<boolean>; // Returns true on success
+  setActivePage: (page: Page) => void;
 }

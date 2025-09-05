@@ -1,6 +1,6 @@
 import React, { useState, useContext, useMemo } from 'react';
 import { AppContext } from '../context/AppContext';
-import { Product, SnippetCategory, GeneratedImage } from '../types';
+import { Product, SnippetCategory, GeneratedImage, Page } from '../types';
 import { CopyIcon, ImageIcon, WandIcon } from './icons';
 import { generateImage, enhancePrompt, ImageSource } from '../services/geminiService';
 import { supabase } from '../services/supabaseClient';
@@ -17,7 +17,7 @@ const base64ToBlob = (base64: string, mimeType: string): Blob => {
 };
 
 const Studio: React.FC = () => {
-    const { profile, products, addGeneratedImage, generatedImages, deductTokens, session } = useContext(AppContext)!;
+    const { profile, products, logo, addGeneratedImage, generatedImages, deductTokens, session, setActivePage } = useContext(AppContext)!;
     const [prompt, setPrompt] = useState<string>('');
     const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -117,7 +117,7 @@ const Studio: React.FC = () => {
 
     const handleGenerateClick = async () => {
         if (!prompt || selectedProducts.length === 0) {
-            setError("Por favor, descreva sua imagem e selecione pelo menos um produto.");
+            setError("Por favor, descreva sua imagem e selecione pelo menos um produto ou logo.");
             return;
         }
         
@@ -292,20 +292,35 @@ const Studio: React.FC = () => {
                              <h3 className="font-semibold text-gray-800">Snippets para inspiração:</h3>
 
                             <div className="mt-4">
-                                <h4 className="font-semibold text-gray-600">Seus Produtos</h4>
-                                <div className="flex flex-wrap gap-2 mt-2">
+                                <h4 className="font-semibold text-gray-600">Seus produtos</h4>
+                                <div className="flex flex-wrap gap-3 mt-2">
                                     {products.length > 0 ? products.map(p => (
                                         <button
                                             key={p.id}
                                             onClick={() => handleProductSelection(p)}
-                                            className={`flex items-center p-2 text-sm border rounded-md transition-colors ${selectedProducts.some(sp => sp.id === p.id) ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-200' : 'border-gray-300 bg-white hover:bg-gray-50'}`}
+                                            className={`flex items-center p-2 text-sm text-left border rounded-lg transition-colors ${selectedProducts.some(sp => sp.id === p.id) ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-200' : 'border-gray-300 bg-white hover:bg-gray-50'}`}
                                         >
-                                            <img src={p.src || `data:${p.mimeType};base64,${p.imageBase64}`} alt={p.name} className="object-contain w-6 h-6 mr-2" />
-                                            {p.name}
+                                            <img src={p.src || `data:${p.mimeType};base64,${p.imageBase64}`} alt={p.name} className="object-contain w-14 h-14 mr-3" />
+                                            <span className="font-medium text-gray-700">{p.name}</span>
                                         </button>
                                     )) : <p className="text-sm text-gray-500">Nenhum produto enviado. Vá para a aba 'Produtos' para fazer upload.</p>}
                                 </div>
                             </div>
+                            
+                            {logo && (
+                                <div className="mt-6">
+                                    <h4 className="font-semibold text-gray-600">Logo</h4>
+                                    <div className="flex flex-wrap gap-3 mt-2">
+                                        <button
+                                            onClick={() => handleProductSelection(logo)}
+                                            className={`flex items-center p-2 text-sm text-left border rounded-lg transition-colors ${selectedProducts.some(sp => sp.id === logo.id) ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-200' : 'border-gray-300 bg-white hover:bg-gray-50'}`}
+                                        >
+                                            <img src={logo.src} alt={logo.name} className="object-contain w-14 h-14 mr-3" />
+                                            <span className="font-medium text-gray-700">{logo.name}</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
                             {snippetCategories.map(category => (
                                 <div className="mt-4" key={category.title}>
@@ -343,7 +358,7 @@ const Studio: React.FC = () => {
                         <div className="sticky top-6">
                              <div className="p-6 bg-white border border-gray-200 rounded-lg">
                                 <h2 className="text-xl font-semibold text-gray-800">Imagens Geradas</h2>
-                                <p className="mt-1 text-sm text-gray-500">Suas imagens geradas aparecerão aqui</p>
+                                <p className="mt-1 text-sm text-gray-500">As 6 imagens mais recentes</p>
                                 
                                 {isLoading && !generatedImages.length && (
                                     <div className="flex flex-col items-center justify-center h-64 mt-4 border-2 border-dashed rounded-lg border-gray-300 bg-gray-50">
@@ -361,7 +376,7 @@ const Studio: React.FC = () => {
 
                                 {generatedImages.length > 0 && (
                                      <div className="grid grid-cols-2 gap-4 mt-4 max-h-[70vh] overflow-y-auto pr-2">
-                                        {generatedImages.map(image => (
+                                        {generatedImages.slice(0, 6).map(image => (
                                              <div key={image.id} className="relative overflow-hidden border border-gray-200 rounded-lg group">
                                                  <img src={image.src} alt={image.prompt} className="object-cover w-full h-auto cursor-pointer" onClick={() => setEditingImage(image)} />
                                                  <div className="absolute inset-0 flex items-center justify-center transition-opacity duration-300 bg-black bg-opacity-0 pointer-events-none group-hover:bg-opacity-50">
@@ -371,6 +386,16 @@ const Studio: React.FC = () => {
                                                  </div>
                                          </div>
                                         ))}
+                                    </div>
+                                )}
+                                {generatedImages.length > 6 && (
+                                    <div className="mt-4 text-center">
+                                        <button 
+                                            onClick={() => setActivePage('gallery')}
+                                            className="w-full px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+                                        >
+                                            Ver todas na Galeria ({generatedImages.length})
+                                        </button>
                                     </div>
                                 )}
                             </div>
