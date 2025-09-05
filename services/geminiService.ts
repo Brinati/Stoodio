@@ -26,9 +26,10 @@ export const generateImage = async (prompt: string, referenceImage: ImageSource)
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image-preview',
-            contents: {
+            contents: [{
+                role: 'user',
                 parts: [imagePart, textPart],
-            },
+            }],
             config: {
                 responseModalities: [Modality.IMAGE, Modality.TEXT],
             },
