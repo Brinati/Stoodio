@@ -86,6 +86,34 @@ const Studio: React.FC = () => {
             setIsEnhancing(false);
         }
     };
+    
+    const urlToImageSource = async (url: string): Promise<ImageSource> => {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error('Falha ao buscar imagem para edição.');
+        }
+        const blob = await response.blob();
+        const mimeType = blob.type;
+        const reader = new FileReader();
+        return new Promise((resolve, reject) => {
+            reader.onloadend = () => {
+                const base64 = (reader.result as string).split(',')[1];
+                resolve({ imageBase64: base64, mimeType });
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    };
+    
+    const getProductImageSource = async (product: Product): Promise<ImageSource> => {
+        if (product.imageBase64 && product.mimeType) {
+            return { imageBase64: product.imageBase64, mimeType: product.mimeType };
+        }
+        if (product.src) {
+            return await urlToImageSource(product.src);
+        }
+        throw new Error(`O produto ${product.name} não possui uma fonte de imagem válida.`);
+    };
 
     const handleGenerateClick = async () => {
         if (!prompt || selectedProducts.length === 0) {
@@ -107,7 +135,10 @@ const Studio: React.FC = () => {
                 throw new Error("Falha ao deduzir tokens.");
             }
 
-            const generationPromises = selectedProducts.map(product => generateImage(prompt, product));
+            const generationPromises = selectedProducts.map(async (product) => {
+                const source = await getProductImageSource(product);
+                return generateImage(prompt, source);
+            });
             const results = await Promise.all(generationPromises);
 
             for (const [index, result] of results.entries()) {
@@ -148,24 +179,6 @@ const Studio: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    };
-
-    const urlToImageSource = async (url: string): Promise<ImageSource> => {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error('Falha ao buscar imagem para edição.');
-        }
-        const blob = await response.blob();
-        const mimeType = blob.type;
-        const reader = new FileReader();
-        return new Promise((resolve, reject) => {
-            reader.onloadend = () => {
-                const base64 = (reader.result as string).split(',')[1];
-                resolve({ imageBase64: base64, mimeType });
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
     };
 
     const handleEditImage = async (image: GeneratedImage, newPrompt: string) => {
@@ -287,7 +300,7 @@ const Studio: React.FC = () => {
                                             onClick={() => handleProductSelection(p)}
                                             className={`flex items-center p-2 text-sm border rounded-md transition-colors ${selectedProducts.some(sp => sp.id === p.id) ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-200' : 'border-gray-300 bg-white hover:bg-gray-50'}`}
                                         >
-                                            <img src={`data:${p.mimeType};base64,${p.imageBase64}`} alt={p.name} className="object-contain w-6 h-6 mr-2" />
+                                            <img src={p.src || `data:${p.mimeType};base64,${p.imageBase64}`} alt={p.name} className="object-contain w-6 h-6 mr-2" />
                                             {p.name}
                                         </button>
                                     )) : <p className="text-sm text-gray-500">Nenhum produto enviado. Vá para a aba 'Produtos' para fazer upload.</p>}

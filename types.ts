@@ -4,8 +4,10 @@ import type { Session } from '@supabase/supabase-js';
 export interface Product {
   id: string;
   name: string;
-  imageBase64: string;
   mimeType: string;
+  imageBase64?: string;
+  src?: string;
+  image_path?: string;
 }
 
 export interface Snippet {
@@ -44,7 +46,7 @@ export interface AppContextType {
   profile: UserProfile | null;
   products: Product[];
   addProducts: (newProducts: Product[]) => void;
-  clearProducts: () => void;
+  clearProducts: () => Promise<void>;
   generatedImages: GeneratedImage[];
   addGeneratedImage: (image: GeneratedImage) => void;
   deductTokens: (amount: number) => Promise<boolean>; // Returns true on success

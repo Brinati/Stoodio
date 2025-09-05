@@ -3,6 +3,7 @@ import React, { useState, useCallback, useContext } from 'react';
 import { AppContext } from '../App';
 import { Product } from '../types';
 import { UploadIcon } from './icons';
+import { supabase } from '../services/supabaseClient';
 
 const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -13,9 +14,21 @@ const fileToBase64 = (file: File): Promise<string> => {
     });
 };
 
+const base64ToBlob = (base64: string, mimeType: string): Blob => {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
+};
+
+
 const Products: React.FC = () => {
-    const { products, addProducts, clearProducts } = useContext(AppContext)!;
+    const { products, addProducts, clearProducts, session } = useContext(AppContext)!;
     const [isDragging, setIsDragging] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const handleFileChange = async (files: FileList | null) => {
@@ -41,15 +54,62 @@ const Products: React.FC = () => {
         if(localError) setError(localError);
 
         if (validFiles.length > 0) {
-            const newProducts: Product[] = await Promise.all(
-                validFiles.map(async (file) => ({
-                    id: `${file.name}-${Date.now()}`,
-                    name: file.name.split('.')[0],
-                    imageBase64: await fileToBase64(file),
-                    mimeType: file.type,
-                }))
-            );
-            addProducts(newProducts);
+            setIsUploading(true);
+            try {
+                if (!session?.user) throw new Error("Usuário não autenticado. Faça login para salvar produtos.");
+
+                const newProductsData = await Promise.all(
+                    validFiles.map(async (file) => ({
+                        name: file.name.split('.')[0],
+                        imageBase64: await fileToBase64(file),
+                        mimeType: file.type,
+                    }))
+                );
+
+                const savedProducts: Product[] = [];
+                for (const productData of newProductsData) {
+                    if (!productData.imageBase64) continue;
+
+                    const blob = base64ToBlob(productData.imageBase64, productData.mimeType);
+                    const fileExt = productData.mimeType.split('/')[1] || 'png';
+                    const fileName = `${crypto.randomUUID()}.${fileExt}`;
+                    const filePath = `${session.user.id}/${fileName}`;
+
+                    const { error: uploadError } = await supabase.storage.from('products').upload(filePath, blob);
+                    if (uploadError) throw uploadError;
+
+                    const { data: dbData, error: dbError } = await supabase
+                        .from('products')
+                        .insert({
+                            user_id: session.user.id,
+                            name: productData.name,
+                            image_path: filePath,
+                            mime_type: productData.mimeType,
+                        })
+                        .select()
+                        .single();
+
+                    if (dbError) throw dbError;
+
+                    const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(filePath);
+
+                    savedProducts.push({
+                        id: dbData.id,
+                        name: productData.name,
+                        mimeType: productData.mimeType,
+                        imageBase64: productData.imageBase64,
+                        src: publicUrl,
+                        image_path: filePath,
+                    });
+                }
+                addProducts(savedProducts);
+
+            } catch (err: any) {
+                setError(err.message || "Falha ao salvar produtos.");
+                console.error(err);
+            } finally {
+                setIsUploading(false);
+            }
         }
     };
 
@@ -76,7 +136,7 @@ const Products: React.FC = () => {
         setIsDragging(false);
         handleFileChange(e.dataTransfer.files);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [products]);
+    }, [products, session]);
 
     return (
         <div className="p-8 bg-gray-50 min-h-full">
@@ -99,15 +159,23 @@ const Products: React.FC = () => {
                         onDragOver={handleDragOver}
                         onDrop={handleDrop}
                     >
-                        <div className="text-center">
-                            <UploadIcon className="w-12 h-12 mx-auto text-gray-400" />
-                            <h3 className="mt-2 text-lg font-medium text-gray-700">Selecione suas imagens</h3>
-                            <p className="mt-1 text-sm text-gray-500">Até 7 imagens, máximo 2MB cada</p>
-                             <p className="mt-4 text-sm text-gray-500">
-                                <span className="font-semibold text-amber-600">Escolher arquivos</span> Nenhum arquivo escolhido
-                            </p>
-                        </div>
-                        <input id="file-upload" name="file-upload" type="file" className="sr-only" multiple accept="image/png, image/jpeg" onChange={(e) => handleFileChange(e.target.files)} />
+                        {isUploading ? (
+                            <div className="text-center">
+                                <div className="w-12 h-12 mx-auto border-4 border-t-4 rounded-full border-t-amber-500 border-gray-200 animate-spin"></div>
+                                <h3 className="mt-4 text-lg font-medium text-gray-700">Salvando produtos...</h3>
+                                <p className="mt-1 text-sm text-gray-500">Aguarde um momento.</p>
+                            </div>
+                        ) : (
+                            <div className="text-center">
+                                <UploadIcon className="w-12 h-12 mx-auto text-gray-400" />
+                                <h3 className="mt-2 text-lg font-medium text-gray-700">Selecione suas imagens</h3>
+                                <p className="mt-1 text-sm text-gray-500">Até 7 imagens, máximo 2MB cada</p>
+                                <p className="mt-4 text-sm text-gray-500">
+                                    <span className="font-semibold text-amber-600">Escolher arquivos</span> ou arraste e solte
+                                </p>
+                            </div>
+                        )}
+                        <input id="file-upload" name="file-upload" type="file" className="sr-only" multiple accept="image/png, image/jpeg" onChange={(e) => handleFileChange(e.target.files)} disabled={isUploading} />
                     </label>
                     {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
                 </div>
@@ -128,17 +196,12 @@ const Products: React.FC = () => {
                     <div className="grid grid-cols-2 gap-4 mt-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7">
                         {products.map((product) => (
                             <div key={product.id} className="relative overflow-hidden bg-white border border-gray-200 rounded-lg group">
-                                <img src={`data:${product.mimeType};base64,${product.imageBase64}`} alt={product.name} className="object-cover w-full h-32" />
+                                <img src={product.src || `data:${product.mimeType};base64,${product.imageBase64}`} alt={product.name} className="object-cover w-full h-32" />
                                 <div className="p-2">
                                     <p className="text-sm font-medium text-gray-700 truncate">{product.name}</p>
                                 </div>
                             </div>
                         ))}
-                    </div>
-                     <div className="flex justify-center mt-6">
-                        <button className="px-12 py-3 font-semibold text-white bg-amber-500 rounded-lg shadow-md hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500">
-                            Enviar
-                        </button>
                     </div>
                 </div>
             )}

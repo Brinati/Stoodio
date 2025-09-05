@@ -49,6 +49,7 @@ const App: React.FC = () => {
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
             setSession(session);
             if (session?.user) {
+                // Fetch Profile
                 const { data: profileData, error: profileError } = await supabase
                     .from('profiles')
                     .select('*')
@@ -62,6 +63,7 @@ const App: React.FC = () => {
                     setProfile(profileData);
                 }
 
+                // Fetch Generated Images
                 const { data: imagesData, error: imagesError } = await supabase
                     .from('generated_images')
                     .select('*')
@@ -83,6 +85,29 @@ const App: React.FC = () => {
                     setGeneratedImages(loadedImages);
                 }
 
+                // Fetch Products
+                const { data: productsData, error: productsError } = await supabase
+                    .from('products')
+                    .select('*')
+                    .eq('user_id', session.user.id)
+                    .order('created_at', { ascending: true });
+
+                if (productsError) {
+                    console.error('Error fetching products:', productsError);
+                } else if (productsData) {
+                    const loadedProducts = productsData.map(p => {
+                        const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(p.image_path);
+                        return {
+                            id: p.id,
+                            name: p.name,
+                            mimeType: p.mime_type,
+                            src: publicUrl,
+                            image_path: p.image_path,
+                        };
+                    });
+                    setProducts(loadedProducts);
+                }
+
             } else {
                 setProfile(null);
                 setProducts([]);
@@ -98,9 +123,26 @@ const App: React.FC = () => {
         setProducts(prev => [...prev, ...newProducts].slice(0, 7)); // Enforce max 7 products
     }, []);
 
-    const clearProducts = useCallback(() => {
-        setProducts([]);
-    }, []);
+    const clearProducts = useCallback(async () => {
+        if (products.length === 0 || !session?.user) return;
+
+        try {
+            const imagePaths = products.map(p => p.image_path).filter(Boolean) as string[];
+            if (imagePaths.length > 0) {
+                const { error: storageError } = await supabase.storage.from('products').remove(imagePaths);
+                if (storageError) throw storageError;
+            }
+
+            const productIds = products.map(p => p.id);
+            const { error: dbError } = await supabase.from('products').delete().in('id', productIds);
+            if (dbError) throw dbError;
+
+            setProducts([]);
+        } catch (error) {
+            console.error("Failed to clear products:", error);
+            // Optionally: show an error message to the user
+        }
+    }, [products, session]);
 
     const addGeneratedImage = useCallback((image: GeneratedImage) => {
         setGeneratedImages(prev => [image, ...prev]);
