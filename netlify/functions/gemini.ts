@@ -38,26 +38,34 @@ const handler: Handler = async (event) => {
         'Access-Control-Allow-Headers': 'Content-Type',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
     };
-
-    // Environment variable check
-    const apiKey = process.env.API_KEY;
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!apiKey || !supabaseUrl || !supabaseServiceRoleKey) {
-        console.error("Missing required environment variables.");
-        return {
-            statusCode: 500,
-            headers,
-            body: JSON.stringify({ error: "Missing required server configuration." }),
-        };
-    }
     
+    // Lida com a requisição preflight do CORS
     if (event.httpMethod === 'OPTIONS') {
         return {
             statusCode: 200,
             headers,
             body: JSON.stringify({ message: 'Chamada de preflight bem-sucedida.' }),
+        };
+    }
+
+    // Validação de variáveis de ambiente com mensagens de erro claras
+    const apiKey = process.env.VITE_GEMINI_API_KEY;
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    const missingEnvs = [];
+    if (!apiKey) missingEnvs.push('VITE_GEMINI_API_KEY');
+    if (!supabaseUrl) missingEnvs.push('VITE_SUPABASE_URL');
+    // A Service Role Key é crucial para operações de admin e não deve ter o prefixo VITE_
+    if (!supabaseServiceRoleKey) missingEnvs.push('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (missingEnvs.length > 0) {
+        const errorMsg = `O servidor não está configurado corretamente. Faltam as seguintes variáveis de ambiente: ${missingEnvs.join(', ')}`;
+        console.error(errorMsg);
+        return {
+            statusCode: 500,
+            headers,
+            body: JSON.stringify({ error: errorMsg }),
         };
     }
 

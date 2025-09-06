@@ -37,8 +37,8 @@ export const generateImage = async (prompt: string, referenceImage: ImageSource)
         return result;
     } catch (error) {
         console.error("Error generating image:", error);
-        // Cria uma mensagem de erro mais amigável.
-        throw new Error("Falha ao gerar a imagem. Verifique seu prompt ou tente novamente mais tarde.");
+        // Re-lança o erro original para que a UI possa exibi-lo.
+        throw error;
     }
 };
 
@@ -48,7 +48,7 @@ export const generateImageFromText = async (prompt: string): Promise<{base64: st
         return result;
     } catch (error) {
         console.error("Error generating image from text:", error);
-        throw new Error("Falha ao gerar a imagem a partir do texto. Tente novamente mais tarde.");
+        throw error;
     }
 };
 
@@ -58,7 +58,7 @@ export const enhancePrompt = async (prompt: string): Promise<string> => {
         return result.text;
     } catch (error) {
         console.error("Error enhancing prompt:", error);
-        throw new Error("Falha ao aprimorar o prompt com a IA.");
+        throw error;
     }
 };
 
@@ -68,7 +68,7 @@ export const updateUserTokens = async (userId: string, newBalance: number): Prom
         return result;
     } catch (error) {
         console.error("Error updating user tokens:", error);
-        throw new Error("Falha ao atualizar os tokens do usuário.");
+        throw error;
     }
 };
 
@@ -78,6 +78,6 @@ export const deleteUser = async (userId: string): Promise<{ message: string }> =
         return result;
     } catch (error) {
         console.error("Error deleting user:", error);
-        throw new Error("Falha ao excluir o usuário.");
+        throw error;
     }
 };
