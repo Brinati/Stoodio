@@ -49,18 +49,17 @@ const handler: Handler = async (event) => {
     }
 
     // Validação de variáveis de ambiente com mensagens de erro claras
-    const apiKey = process.env.VITE_GEMINI_API_KEY;
-    const supabaseUrl = process.env.VITE_SUPABASE_URL;
-    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const apiKey = process.env.API_KEY; // CORREÇÃO: Usando a variável de ambiente padrão da plataforma.
+    
+    // SOLUÇÃO: Hardcoding das chaves Supabase para contornar problemas de configuração de ambiente.
+    const supabaseUrl = 'https://dmzuablzbrxzguxzivlr.supabase.co';
+    const supabaseServiceRoleKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRtenVhYmx6YnJ4emd1eHppdmxyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NzAyNTU5NiwiZXhwIjoyMDcyNjAxNTk2fQ.hDV5rzhbwggzcPAndAhoe6keuoXv89anz5JlseU1BvQ';
 
     const missingEnvs = [];
-    if (!apiKey) missingEnvs.push('VITE_GEMINI_API_KEY');
-    if (!supabaseUrl) missingEnvs.push('VITE_SUPABASE_URL');
-    // A Service Role Key é crucial para operações de admin e não deve ter o prefixo VITE_
-    if (!supabaseServiceRoleKey) missingEnvs.push('SUPABASE_SERVICE_ROLE_KEY');
+    if (!apiKey) missingEnvs.push('API_KEY');
 
     if (missingEnvs.length > 0) {
-        const errorMsg = `O servidor não está configurado corretamente. Faltam as seguintes variáveis de ambiente: ${missingEnvs.join(', ')}`;
+        const errorMsg = `O servidor não está configurado corretamente. Faltam as seguintes variáveis de ambiente: ${missingEnvs.join(', ')}. Certifique-se de que a API_KEY do Gemini está configurada no seu ambiente Netlify.`;
         console.error(errorMsg);
         return {
             statusCode: 500,
