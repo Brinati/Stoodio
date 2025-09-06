@@ -5,8 +5,14 @@
 // STRIPE_SECRET_KEY = sk_live_...
 
 import { Handler } from '@netlify/functions';
-// Using `require` for Stripe as it can sometimes have issues with ES module imports in Netlify Functions.
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+// FIX: Switched from `require` to an ES module `import` to resolve TypeScript compilation errors.
+import Stripe from 'stripe';
+
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+if (!stripeSecretKey) {
+    throw new Error("STRIPE_SECRET_KEY environment variable is not set.");
+}
+const stripe = new Stripe(stripeSecretKey);
 
 const handler: Handler = async (event) => {
   // Allow requests from your production domain
