@@ -55,4 +55,10 @@ export interface AppContextType {
   addGeneratedImage: (image: GeneratedImage) => void;
   deductTokens: (amount: number) => Promise<boolean>; // Returns true on success
   setActivePage: (page: Page) => void;
+  // New generation state
+  isGenerating: boolean;
+  generationProgress: { completed: number; total: number };
+  generationError: string | null;
+  runGeneration: (prompt: string, products: Product[]) => Promise<void>;
+  clearGenerationError: () => void;
 }

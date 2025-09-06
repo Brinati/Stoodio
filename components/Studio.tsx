@@ -1,32 +1,28 @@
-import React, { useState, useContext, useMemo } from 'react';
+import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
-import { Product, SnippetCategory, GeneratedImage, Page } from '../types';
+import { Product, SnippetCategory, GeneratedImage, Snippet } from '../types';
 import { CopyIcon, ImageIcon, WandIcon } from './icons';
-import { generateImage, enhancePrompt, ImageSource } from '../services/geminiService';
+import { enhancePrompt } from '../services/geminiService';
 import { supabase } from '../services/supabaseClient';
 import EditImageModal from './EditImageModal';
 import LowTokenModal from './LowTokenModal';
+import { generateImage, ImageSource } from '../services/geminiService';
 
-const base64ToBlob = (base64: string, mimeType: string): Blob => {
-    const byteCharacters = atob(base64);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    return new Blob([byteArray], { type: mimeType });
-};
 
 const Studio: React.FC = () => {
-    const { profile, products, logo, addGeneratedImage, generatedImages, deductTokens, session, setActivePage } = useContext(AppContext)!;
+    const { 
+        profile, products, logo, addGeneratedImage, generatedImages, setActivePage, session,
+        isGenerating, generationProgress, generationError, runGeneration, clearGenerationError, deductTokens
+    } = useContext(AppContext)!;
+    
     const [prompt, setPrompt] = useState<string>('');
     const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
     const [isEnhancing, setIsEnhancing] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [validationError, setValidationError] = useState<string | null>(null);
     const [editingImage, setEditingImage] = useState<GeneratedImage | null>(null);
     const [isLowTokenModalOpen, setLowTokenModalOpen] = useState(false);
     const [requiredTokens, setRequiredTokens] = useState(0);
+    const [selectedSnippetIds, setSelectedSnippetIds] = useState<Set<string>>(new Set());
 
     const snippetCategories: SnippetCategory[] = useMemo(() => [
         {
@@ -60,12 +56,46 @@ const Studio: React.FC = () => {
             ]
         },
     ], []);
+    
+    useEffect(() => {
+        const currentPromptParts = new Set(prompt.split(',').map(p => p.trim()).filter(Boolean));
+        const newSelectedIds = new Set<string>();
 
-    const handleSnippetClick = (promptText: string) => {
-        setPrompt(prev => prev ? `${prev}, ${promptText}` : promptText);
+        snippetCategories.forEach(category => {
+            category.snippets.forEach(snippet => {
+                const snippetPromptParts = snippet.prompt.split(',').map(p => p.trim()).filter(Boolean);
+                const isPresent = snippetPromptParts.length > 0 && snippetPromptParts.every(part => currentPromptParts.has(part));
+                if (isPresent) {
+                    newSelectedIds.add(snippet.id);
+                }
+            });
+        });
+
+        if (newSelectedIds.size !== selectedSnippetIds.size || ![...newSelectedIds].every(id => selectedSnippetIds.has(id))) {
+           setSelectedSnippetIds(newSelectedIds);
+        }
+    }, [prompt, snippetCategories, selectedSnippetIds]);
+
+    const handleSnippetClick = (snippet: Snippet) => {
+        const isSelected = selectedSnippetIds.has(snippet.id);
+        
+        let currentPromptParts = prompt.split(',').map(p => p.trim()).filter(Boolean);
+        const snippetPromptParts = snippet.prompt.split(',').map(p => p.trim()).filter(Boolean);
+
+        if (isSelected) {
+            currentPromptParts = currentPromptParts.filter(p => !snippetPromptParts.includes(p));
+        } else {
+            snippetPromptParts.forEach(part => {
+                if (!currentPromptParts.includes(part)) {
+                    currentPromptParts.push(part);
+                }
+            });
+        }
+        setPrompt(currentPromptParts.join(', '));
     };
 
     const handleProductSelection = (product: Product) => {
+        setValidationError(null);
         setSelectedProducts(prevSelected => {
             const isAlreadySelected = prevSelected.some(p => p.id === product.id);
             if (isAlreadySelected) {
@@ -79,110 +109,61 @@ const Studio: React.FC = () => {
     const handleEnhancePrompt = async () => {
         if (!prompt || isEnhancing) return;
         setIsEnhancing(true);
-        setError(null);
         try {
             const enhanced = await enhancePrompt(prompt);
             setPrompt(enhanced);
         } catch (err: any) {
-            setError(err.message || "Não foi possível aprimorar o prompt.");
+            console.error(err.message);
         } finally {
             setIsEnhancing(false);
         }
     };
-    
-    const urlToImageSource = async (url: string): Promise<ImageSource> => {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error('Falha ao buscar imagem para edição.');
-        }
-        const blob = await response.blob();
-        const mimeType = blob.type;
-        const reader = new FileReader();
-        return new Promise((resolve, reject) => {
-            reader.onloadend = () => {
-                const base64 = (reader.result as string).split(',')[1];
-                resolve({ imageBase64: base64, mimeType });
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    };
-    
-    const getProductImageSource = async (product: Product): Promise<ImageSource> => {
-        if (product.imageBase64 && product.mimeType) {
-            return { imageBase64: product.imageBase64, mimeType: product.mimeType };
-        }
-        if (product.src) {
-            return await urlToImageSource(product.src);
-        }
-        throw new Error(`O produto ${product.name} não possui uma fonte de imagem válida.`);
-    };
+
+    const generationCost = useMemo(() => {
+        if (selectedProducts.length === 0) return 0;
+        return 16 + (selectedProducts.length - 1) * 4;
+    }, [selectedProducts.length]);
 
     const handleGenerateClick = async () => {
         if (!prompt || selectedProducts.length === 0) {
-            setError("Por favor, descreva sua imagem e selecione pelo menos um produto ou logo.");
+            setValidationError("Por favor, descreva sua imagem e selecione pelo menos um produto ou logo.");
             return;
         }
         
-        const cost = selectedProducts.length * 16;
+        const cost = generationCost;
         if ((profile?.token_balance ?? 0) < cost) {
             setRequiredTokens(cost);
             setLowTokenModalOpen(true);
             return;
         }
 
-        setIsLoading(true);
-        setError(null);
-        try {
-            const success = await deductTokens(cost);
-            if (!success) {
-                throw new Error("Falha ao deduzir tokens.");
-            }
+        setValidationError(null);
+        runGeneration(prompt, selectedProducts);
+    };
 
-            const generationPromises = selectedProducts.map(async (product) => {
-                const source = await getProductImageSource(product);
-                return generateImage(prompt, source);
-            });
-            const results = await Promise.all(generationPromises);
-
-            for (const [index, result] of results.entries()) {
-                if (result && session?.user) {
-                    const product = selectedProducts[index];
-                    const blob = base64ToBlob(result.base64, result.mimeType);
-                    const fileName = `${Date.now()}-${product.name.replace(/\s+/g, '-')}.png`;
-                    const filePath = `${session.user.id}/${fileName}`;
-                    
-                    const { error: uploadError } = await supabase.storage.from('generated_images').upload(filePath, blob);
-                    if (uploadError) {
-                        console.error('Error uploading image:', uploadError);
-                        continue;
-                    }
-
-                    const { data: dbData, error: dbError } = await supabase
-                        .from('generated_images')
-                        .insert({ user_id: session.user.id, prompt: prompt, image_path: filePath })
-                        .select().single();
-                    
-                    if (dbError) {
-                        console.error('Error saving image metadata:', dbError);
-                        continue;
-                    }
-
-                    const { data: { publicUrl } } = supabase.storage.from('generated_images').getPublicUrl(filePath);
-
-                    addGeneratedImage({
-                        id: dbData.id,
-                        src: publicUrl,
-                        prompt: prompt,
-                        image_path: filePath,
-                    });
-                }
-            }
-        } catch (err: any) {
-            setError(err.message || "Ocorreu um erro desconhecido ao gerar imagens.");
-        } finally {
-            setIsLoading(false);
+    const urlToImageSource = async (url: string): Promise<ImageSource> => {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Falha ao buscar imagem para edição.');
+        const blob = await response.blob();
+        const reader = new FileReader();
+        return new Promise((resolve, reject) => {
+            reader.onloadend = () => {
+                const base64 = (reader.result as string).split(',')[1];
+                resolve({ imageBase64: base64, mimeType: blob.type });
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    };
+    
+    const base64ToBlob = (base64: string, mimeType: string): Blob => {
+        const byteCharacters = atob(base64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
         }
+        const byteArray = new Uint8Array(byteNumbers);
+        return new Blob([byteArray], { type: mimeType });
     };
 
     const handleEditImage = async (image: GeneratedImage, newPrompt: string) => {
@@ -199,7 +180,7 @@ const Studio: React.FC = () => {
             referenceImage = await urlToImageSource(image.src);
         } catch (error) {
             console.error(error);
-            await deductTokens(-cost); // Refund tokens on failure
+            await deductTokens(-cost);
             throw new Error("Não foi possível carregar a imagem original para edição.");
         }
 
@@ -212,7 +193,7 @@ const Studio: React.FC = () => {
             
             const { error: uploadError } = await supabase.storage.from('generated_images').upload(filePath, blob);
             if (uploadError) {
-                await deductTokens(-cost); // Refund
+                await deductTokens(-cost);
                 throw new Error("Falha ao fazer upload da nova imagem.");
             }
 
@@ -222,7 +203,7 @@ const Studio: React.FC = () => {
                 .select().single();
 
             if (dbError) {
-                 await deductTokens(-cost); // Refund
+                 await deductTokens(-cost);
                 throw new Error("Falha ao salvar metadados da nova imagem.");
             }
             
@@ -235,7 +216,7 @@ const Studio: React.FC = () => {
                 image_path: filePath,
             });
         } else {
-            await deductTokens(-cost); // Refund tokens
+            await deductTokens(-cost);
             throw new Error("A IA não conseguiu gerar uma nova versão da imagem.");
         }
     };
@@ -276,7 +257,10 @@ const Studio: React.FC = () => {
                             <p className="mt-1 text-sm text-gray-500">Descreva detalhes para criação da sua imagem</p>
                             <textarea
                                 value={prompt}
-                                onChange={(e) => setPrompt(e.target.value)}
+                                onChange={(e) => {
+                                    setPrompt(e.target.value);
+                                    if(validationError) setValidationError(null);
+                                }}
                                 placeholder="Descreva sua imagem em detalhes..."
                                 className="w-full h-32 p-3 mt-4 text-gray-700 bg-white border border-gray-300 rounded-md focus:ring-amber-500 focus:border-amber-500"
                             />
@@ -340,29 +324,41 @@ const Studio: React.FC = () => {
                                 <div className="mt-4" key={category.title}>
                                     <h4 className="flex items-center font-semibold text-gray-600">{category.icon}{category.title}</h4>
                                     <div className="flex flex-wrap gap-2 mt-2">
-                                        {category.snippets.map(snippet => (
-                                            <button
-                                                key={snippet.id}
-                                                onClick={() => handleSnippetClick(snippet.prompt)}
-                                                className="px-3 py-2 text-sm text-gray-700 bg-gray-100 border border-gray-200 rounded-md hover:bg-gray-200 hover:border-gray-300"
-                                            >
-                                                {snippet.text}
-                                            </button>
-                                        ))}
+                                        {category.snippets.map(snippet => {
+                                            const isSelected = selectedSnippetIds.has(snippet.id);
+                                            return (
+                                                <button
+                                                    key={snippet.id}
+                                                    onClick={() => handleSnippetClick(snippet)}
+                                                    className={`flex items-center justify-center px-3 py-2 text-sm rounded-md transition-all duration-200 ${
+                                                        isSelected 
+                                                            ? 'bg-amber-100 border-amber-300 border font-semibold text-amber-800' 
+                                                            : 'bg-gray-100 border border-gray-200 text-gray-700 hover:bg-gray-200 hover:border-gray-300'
+                                                    }`}
+                                                >
+                                                    {isSelected && <i className="mr-2 fas fa-check"></i>}
+                                                    {snippet.text}
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             ))}
                         </div>
 
                          <div className="mt-6">
+                            {validationError && (
+                                <div className="p-3 mb-4 text-sm text-center text-red-800 bg-red-100 rounded-md">
+                                    {validationError}
+                                </div>
+                            )}
                             <button
                                 onClick={handleGenerateClick}
-                                disabled={!prompt || selectedProducts.length === 0 || isLoading}
+                                disabled={!prompt || selectedProducts.length === 0 || isGenerating}
                                 className="w-full px-6 py-3 text-lg font-semibold text-white bg-amber-500 rounded-lg shadow-md disabled:bg-gray-400 disabled:cursor-not-allowed hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500"
                             >
-                                {isLoading ? 'Gerando...' : `Gerar Imagem (${selectedProducts.length * 16} tokens)`}
+                                {isGenerating ? `Gerando ${generationProgress.completed} de ${generationProgress.total}...` : `Gerar Imagem (${generationCost} tokens)`}
                             </button>
-                            {error && <p className="mt-2 text-sm text-center text-red-600">{error}</p>}
                         </div>
 
                     </div>
@@ -374,14 +370,33 @@ const Studio: React.FC = () => {
                                 <h2 className="text-xl font-semibold text-gray-800">Imagens Geradas</h2>
                                 <p className="mt-1 text-sm text-gray-500">As 6 imagens mais recentes</p>
                                 
-                                {isLoading && !generatedImages.length && (
-                                    <div className="flex flex-col items-center justify-center h-64 mt-4 border-2 border-dashed rounded-lg border-gray-300 bg-gray-50">
-                                        <p className="text-gray-500">Gerando sua obra-prima...</p>
-                                        <div className="w-16 h-16 mt-4 border-4 border-t-4 rounded-full border-t-amber-500 border-gray-200 animate-spin"></div>
+                                {isGenerating && (
+                                    <div className="mt-4">
+                                        <p className="text-sm font-semibold text-center text-gray-600">
+                                            {generationProgress.total > 0 && generationProgress.completed < generationProgress.total
+                                                ? `Processando ${generationProgress.completed + 1} de ${generationProgress.total}...`
+                                                : "Finalizando..."
+                                            }
+                                        </p>
+                                        <div className="w-full h-2 mt-2 overflow-hidden bg-gray-200 rounded-full">
+                                            <div 
+                                                className="h-full bg-amber-500 transition-all duration-300" 
+                                                style={{ width: `${generationProgress.total > 0 ? (generationProgress.completed / generationProgress.total) * 100 : 0}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                {generationError && !isGenerating && (
+                                     <div className="relative p-3 pl-4 pr-10 mt-4 text-sm text-left text-red-800 bg-red-100 rounded-md">
+                                        <strong className="font-semibold">Erro na Geração:</strong> {generationError}
+                                        <button onClick={clearGenerationError} className="absolute top-1/2 right-3 transform -translate-y-1/2 text-red-700 hover:text-red-900" aria-label="Fechar erro">
+                                            <i className="fas fa-times"></i>
+                                        </button>
                                     </div>
                                 )}
 
-                                {!isLoading && generatedImages.length === 0 && (
+                                {!isGenerating && generatedImages.length === 0 && !generationError && (
                                     <div className="flex flex-col items-center justify-center h-64 mt-4 border-2 border-dashed rounded-lg border-gray-300 bg-gray-50">
                                         <ImageIcon className="w-16 h-16 text-gray-400" />
                                         <p className="mt-2 text-gray-500">Sua imagem aparecerá aqui</p>

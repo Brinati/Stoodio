@@ -15,27 +15,12 @@ if (!stripeSecretKey) {
 const stripe = new Stripe(stripeSecretKey);
 
 const handler: Handler = async (event) => {
-  // Allow requests from your production domain
   const origin = event.headers.origin;
-  const allowedOrigins = [
-      'https://main--brilliant-buttercream-cbfb40.netlify.app', 
-      'http://localhost:8888', // for local development
-    ];
-
   const headers = {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Origin': '*' // In production, you should lock this down to your site's origin for better security
   };
-  
-//   if (origin && allowedOrigins.includes(origin)) {
-//     headers['Access-Control-Allow-Origin'] = origin;
-//   } else {
-//       return {
-//           statusCode: 403,
-//           body: JSON.stringify({ error: 'Origin not allowed' }),
-//       }
-//   }
 
   // Handle preflight CORS request
   if (event.httpMethod === 'OPTIONS') {
@@ -46,7 +31,6 @@ const handler: Handler = async (event) => {
     };
   }
 
-
   if (event.httpMethod !== 'POST' || !event.body) {
     return {
       statusCode: 405,
@@ -56,25 +40,39 @@ const handler: Handler = async (event) => {
   }
 
   try {
-    const { priceId } = JSON.parse(event.body);
+    const { priceId, userEmail } = JSON.parse(event.body);
 
     if (!priceId) {
         throw new Error("Price ID is required.");
     }
 
-    const session = await stripe.checkout.sessions.create({
+    const subscriptionPriceIds = [
+        'price_1PScF3A5qkZtHvNNs4v5L2pX', // Básico
+        'price_1PScGBA5qkZtHvNN3N0aEeyB', // Profissional
+        'price_1PScGgA5qkZtHvNNTj4bXh2C', // Premium
+    ];
+
+    const mode = subscriptionPriceIds.includes(priceId) ? 'subscription' : 'payment';
+    
+    const successUrl = `${origin || 'https://main--brilliant-buttercream-cbfb40.netlify.app'}/?payment_success=true`;
+    const cancelUrl = `${origin || 'https://main--brilliant-buttercream-cbfb40.netlify.app'}/plans?payment_canceled=true`;
+    
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
       payment_method_types: ['card'],
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
-      ],
-      mode: 'payment', // Use 'subscription' for recurring plans
-      // IMPORTANT: Replace these with your actual success and cancel URLs
-      success_url: `${origin}/?payment_success=true`,
-      cancel_url: `${origin}/plans?payment_canceled=true`,
-    });
+      line_items: [{ price: priceId, quantity: 1 }],
+      mode: mode,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+    };
+    
+    if (mode === 'subscription') {
+      if (!userEmail) {
+        throw new Error("User email is required for subscriptions.");
+      }
+      sessionParams.customer_email = userEmail;
+    }
+    
+    const session = await stripe.checkout.sessions.create(sessionParams);
 
     return {
       statusCode: 200,

@@ -49,7 +49,7 @@ const PlanCard: React.FC<{
 
 
 const Plans: React.FC = () => {
-    const { profile } = useContext(AppContext)!;
+    const { profile, session } = useContext(AppContext)!;
     const [loadingPriceId, setLoadingPriceId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -70,7 +70,7 @@ const Plans: React.FC = () => {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ priceId }),
+                body: JSON.stringify({ priceId, userEmail: session?.user?.email }),
             });
 
             if (!response.ok) {

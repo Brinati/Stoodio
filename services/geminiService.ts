@@ -51,3 +51,23 @@ export const enhancePrompt = async (prompt: string): Promise<string> => {
         throw new Error("Falha ao aprimorar o prompt com a IA.");
     }
 };
+
+export const updateUserTokens = async (userId: string, newBalance: number): Promise<any> => {
+    try {
+        const result = await callApi('updateUserTokens', { userId, newBalance });
+        return result;
+    } catch (error) {
+        console.error("Error updating user tokens:", error);
+        throw new Error("Falha ao atualizar os tokens do usuário.");
+    }
+};
+
+export const deleteUser = async (userId: string): Promise<{ message: string }> => {
+    try {
+        const result = await callApi('deleteUser', { userId });
+        return result;
+    } catch (error) {
+        console.error("Error deleting user:", error);
+        throw new Error("Falha ao excluir o usuário.");
+    }
+};

@@ -14,6 +14,8 @@ import Gallery from './components/Gallery';
 import { AppContext } from './context/AppContext';
 // FIX: Changed to a type-only import for `Session` to resolve TypeScript module resolution errors.
 import type { Session } from '@supabase/supabase-js';
+import UserSettings from './components/UserSettings';
+import { generateImage, ImageSource } from './services/geminiService';
 
 
 const PlaceholderPage: React.FC<{title: string}> = ({title}) => (
@@ -27,6 +29,46 @@ const PlaceholderPage: React.FC<{title: string}> = ({title}) => (
 
 type AuthView = 'landing' | 'login' | 'register';
 
+// Helper functions moved from Studio.tsx to be accessible in the global scope
+const base64ToBlob = (base64: string, mimeType: string): Blob => {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
+};
+
+const urlToImageSource = async (url: string): Promise<ImageSource> => {
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error('Falha ao buscar imagem para edição.');
+    }
+    const blob = await response.blob();
+    const mimeType = blob.type;
+    const reader = new FileReader();
+    return new Promise((resolve, reject) => {
+        reader.onloadend = () => {
+            const base64 = (reader.result as string).split(',')[1];
+            resolve({ imageBase64: base64, mimeType });
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+};
+
+const getProductImageSource = async (product: Product): Promise<ImageSource> => {
+    if (product.imageBase64 && product.mimeType) {
+        return { imageBase64: product.imageBase64, mimeType: product.mimeType };
+    }
+    if (product.src) {
+        return await urlToImageSource(product.src);
+    }
+    throw new Error(`O produto ${product.name} não possui uma fonte de imagem válida.`);
+};
+
+
 const App: React.FC = () => {
     const [session, setSession] = useState<Session | null>(null);
     const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -37,6 +79,11 @@ const App: React.FC = () => {
     const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
     const [loadingSession, setLoadingSession] = useState(true);
     const [isSidebarOpen, setSidebarOpen] = useState(false);
+
+    // Generation State moved to App level
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [generationProgress, setGenerationProgress] = useState({ completed: 0, total: 0 });
+    const [generationError, setGenerationError] = useState<string | null>(null);
 
 
     useEffect(() => {
@@ -190,7 +237,7 @@ const App: React.FC = () => {
         if (!profile || !session?.user) return false;
 
         const newBalance = profile.token_balance - amount;
-        if (newBalance < 0) return false;
+        if (newBalance < 0 && amount > 0) return false; // Allow refunds to go through
 
         const { data, error } = await supabase
             .from('profiles')
@@ -208,19 +255,89 @@ const App: React.FC = () => {
         return true;
     };
 
+    const runGeneration = useCallback(async (prompt: string, productsToProcess: Product[]) => {
+        if (!session?.user) {
+            setGenerationError("Usuário não autenticado. Por favor, faça login novamente.");
+            return;
+        }
+        
+        const cost = 16 + (Math.max(0, productsToProcess.length - 1)) * 4;
+        
+        setIsGenerating(true);
+        setGenerationProgress({ completed: 0, total: productsToProcess.length });
+        setGenerationError(null);
+        let tokensDeducted = false;
+
+        try {
+            const success = await deductTokens(cost);
+            if (!success) {
+                throw new Error("Falha ao deduzir tokens. Saldo insuficiente ou erro no servidor.");
+            }
+            tokensDeducted = true;
+
+            for (const [index, product] of productsToProcess.entries()) {
+                const source = await getProductImageSource(product);
+                const result = await generateImage(prompt, source);
+                
+                if (!result || !result.base64) {
+                    throw new Error(`A IA não conseguiu gerar uma imagem para "${product.name}". Tente um prompt diferente.`);
+                }
+                
+                const blob = base64ToBlob(result.base64, result.mimeType);
+                const fileName = `${Date.now()}-${product.name.replace(/\s+/g, '-')}.png`;
+                const filePath = `${session.user.id}/${fileName}`;
+                
+                const { error: uploadError } = await supabase.storage.from('generated_images').upload(filePath, blob);
+                if (uploadError) throw new Error(`Falha no upload para o Supabase: ${uploadError.message}`);
+                
+                const { data: dbData, error: dbError } = await supabase
+                    .from('generated_images')
+                    .insert({ user_id: session.user.id, prompt, image_path: filePath })
+                    .select().single();
+                
+                if (dbError) throw new Error(`Falha ao salvar no banco de dados: ${dbError.message}`);
+
+                const { data: { publicUrl } } = supabase.storage.from('generated_images').getPublicUrl(filePath);
+
+                addGeneratedImage({
+                    id: dbData.id,
+                    src: publicUrl,
+                    prompt: prompt,
+                    image_path: filePath,
+                });
+                
+                setGenerationProgress({ completed: index + 1, total: productsToProcess.length });
+            }
+
+        } catch (err: any) {
+            console.error("Generation failed:", err);
+            const errorMessage = err.message || "Ocorreu um erro desconhecido ao gerar imagens.";
+            setGenerationError(errorMessage);
+            
+            if (tokensDeducted) {
+                await deductTokens(-cost);
+                setGenerationError(prev => `${prev || errorMessage} Seus tokens foram devolvidos.`);
+            }
+        } finally {
+            setIsGenerating(false);
+        }
+    }, [session, deductTokens, addGeneratedImage]);
+
+    const clearGenerationError = useCallback(() => {
+        setGenerationError(null);
+    }, []);
+
     const handleLogout = async () => {
         try {
             const { error } = await supabase.auth.signOut();
             if (error) throw error;
-            // The onAuthStateChange listener will handle clearing most session state.
-            // Explicitly clear state here for immediate UI feedback.
             setSession(null);
             setProfile(null);
             setProducts([]);
             setLogo(null);
             setGeneratedImages([]);
             setActivePage('studio');
-            setAuthView('landing'); // Redirect to landing page
+            setAuthView('landing');
         } catch (error: any) {
             console.error("Error logging out:", error.message);
             alert(`Falha ao sair: ${error.message}`);
@@ -233,7 +350,7 @@ const App: React.FC = () => {
             case 'products': return <Products />;
             case 'gallery': return <Gallery />;
             case 'plans': return <Plans />;
-            case 'settings': return <PlaceholderPage title="Configurações" />;
+            case 'settings': return <UserSettings />;
             case 'admin': 
                 return profile?.role === 'super_admin' ? <AdminPage /> : <PlaceholderPage title="Acesso Negado" />;
             default: return <Studio />;
@@ -241,7 +358,7 @@ const App: React.FC = () => {
     };
 
     if (loadingSession) {
-        return <div className="flex items-center justify-center h-screen bg-gray-50"></div>; // Or a proper loading spinner
+        return <div className="flex items-center justify-center h-screen bg-gray-50"></div>;
     }
 
     if (!session) {
@@ -255,8 +372,14 @@ const App: React.FC = () => {
         }
     }
 
+    const contextValue: AppContextType = {
+        session, profile, products, logo, addProducts, clearProducts, addLogo, removeLogo,
+        generatedImages, addGeneratedImage, deductTokens, setActivePage,
+        isGenerating, generationProgress, generationError, runGeneration, clearGenerationError
+    };
+
     return (
-        <AppContext.Provider value={{ session, profile, products, logo, addProducts, clearProducts, addLogo, removeLogo, generatedImages, addGeneratedImage, deductTokens, setActivePage }}>
+        <AppContext.Provider value={contextValue}>
             <div className="flex h-screen bg-gray-100">
                 <Sidebar activePage={activePage} setActivePage={setActivePage} isOpen={isSidebarOpen} setOpen={setSidebarOpen} />
                 <div className="flex flex-col flex-1 w-0 h-full">

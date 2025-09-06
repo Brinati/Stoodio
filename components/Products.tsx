@@ -103,7 +103,6 @@ const LogoUploader: React.FC = () => {
                         <img src={logo.src} alt="Logo" className="w-16 h-16 object-contain" />
                         <div className="flex-grow">
                             <p className="font-semibold">Logo atual</p>
-                            <p className="text-xs text-gray-500 truncate">{logo.image_path?.split('/').pop()}</p>
                         </div>
                         <button onClick={removeLogo} className="flex-shrink-0 text-sm font-medium text-red-600 hover:text-red-800">
                            Remover

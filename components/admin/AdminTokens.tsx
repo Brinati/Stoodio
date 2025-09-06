@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
 import { UserProfile } from '../../types';
+import { updateUserTokens } from '../../services/geminiService';
 
 const AdminTokens: React.FC = () => {
     const [users, setUsers] = useState<UserProfile[]>([]);
     const [selectedUserId, setSelectedUserId] = useState('');
     const [tokenAmount, setTokenAmount] = useState(0);
     const [loading, setLoading] = useState(true);
+    const [updating, setUpdating] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -38,7 +40,7 @@ const AdminTokens: React.FC = () => {
 
         setError(null);
         setSuccessMessage(null);
-        setLoading(true);
+        setUpdating(true);
 
         const currentBalance = selectedUser.token_balance;
         const newBalance = operation === 'add' 
@@ -47,26 +49,21 @@ const AdminTokens: React.FC = () => {
 
         if (newBalance < 0) {
             setError('O usuário não pode ter um saldo de tokens negativo.');
-            setLoading(false);
+            setUpdating(false);
             return;
         }
 
-        const { data, error: updateError } = await supabase
-            .from('profiles')
-            .update({ token_balance: newBalance })
-            .eq('id', selectedUserId)
-            .select()
-            .single();
-
-        if (updateError) {
-            setError('Falha ao atualizar os tokens.');
-            console.error(updateError);
-        } else {
-            setSuccessMessage(`Tokens atualizados para ${data.full_name} com sucesso!`);
-            setUsers(users.map(u => u.id === selectedUserId ? data : u));
+        try {
+            const updatedProfile = await updateUserTokens(selectedUserId, newBalance);
+            setSuccessMessage(`Tokens atualizados para ${updatedProfile.full_name} com sucesso!`);
+            setUsers(users.map(u => u.id === selectedUserId ? updatedProfile : u));
             setTokenAmount(0);
+        } catch (err: any) {
+            setError(err.message || 'Falha ao atualizar os tokens.');
+            console.error(err);
+        } finally {
+            setUpdating(false);
         }
-        setLoading(false);
     };
 
     const selectedUser = users.find(u => u.id === selectedUserId);
@@ -83,7 +80,7 @@ const AdminTokens: React.FC = () => {
                             <label htmlFor="user-select" className="block text-sm font-medium text-gray-700">Selecionar Usuário</label>
                             <select
                                 id="user-select"
-                                className="block w-full px-3 py-2 mt-1 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-amber-500 focus:border-amber-500 sm:text-sm"
+                                className="block w-full px-3 py-2 mt-1 text-gray-900 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-amber-500 focus:border-amber-500 sm:text-sm"
                                 value={selectedUserId}
                                 onChange={(e) => setSelectedUserId(e.target.value)}
                             >
@@ -97,7 +94,7 @@ const AdminTokens: React.FC = () => {
                             <input
                                 type="number"
                                 id="token-amount"
-                                className="block w-full px-3 py-2 mt-1 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-amber-500 focus:border-amber-500 sm:text-sm"
+                                className="block w-full px-3 py-2 mt-1 text-gray-900 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-amber-500 focus:border-amber-500 sm:text-sm"
                                 value={tokenAmount}
                                 onChange={(e) => setTokenAmount(Number(e.target.value))}
                                 min="0"
@@ -116,13 +113,13 @@ const AdminTokens: React.FC = () => {
                     {successMessage && <p className="text-sm text-green-600">{successMessage}</p>}
 
                     <div className="flex flex-col gap-4 pt-4 border-t border-gray-200 sm:flex-row">
-                        <button onClick={() => handleTokenUpdate('add')} disabled={loading} className="flex-1 items-center justify-center px-4 py-2 font-semibold text-white bg-gray-800 rounded-md hover:bg-gray-700 disabled:bg-gray-400">
+                        <button onClick={() => handleTokenUpdate('add')} disabled={updating} className="flex-1 items-center justify-center px-4 py-2 font-semibold text-white bg-gray-800 rounded-md hover:bg-gray-700 disabled:bg-gray-400">
                             <i className="fa-solid fa-plus mr-2"></i>
-                            Adicionar Tokens
+                            {updating ? 'Atualizando...' : 'Adicionar Tokens'}
                         </button>
-                        <button onClick={() => handleTokenUpdate('remove')} disabled={loading} className="flex-1 items-center justify-center px-4 py-2 font-semibold text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:bg-gray-200">
+                        <button onClick={() => handleTokenUpdate('remove')} disabled={updating} className="flex-1 items-center justify-center px-4 py-2 font-semibold text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:bg-gray-200">
                             <i className="fa-solid fa-minus mr-2"></i>
-                            Remover Tokens
+                            {updating ? 'Atualizando...' : 'Remover Tokens'}
                         </button>
                     </div>
                 </div>

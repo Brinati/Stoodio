@@ -9,13 +9,13 @@ const AdminNotifications: React.FC = () => {
             <div className="mt-6 space-y-6">
                 <div>
                     <label htmlFor="notif-title" className="block text-sm font-medium text-gray-700">Título da notificação</label>
-                    <input type="text" id="notif-title" className="block w-full px-3 py-2 mt-1 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-amber-500 focus:border-amber-500 sm:text-sm" placeholder="Digite o título da notificação"/>
+                    <input type="text" id="notif-title" className="block w-full px-3 py-2 mt-1 text-gray-900 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-amber-500 focus:border-amber-500 sm:text-sm" placeholder="Digite o título da notificação"/>
                     <p className="mt-1 text-xs text-gray-500">0/100 caracteres</p>
                 </div>
                 
                 <div>
                     <label htmlFor="notif-message" className="block text-sm font-medium text-gray-700">Mensagem</label>
-                    <textarea id="notif-message" rows={5} className="block w-full px-3 py-2 mt-1 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-amber-500 focus:border-amber-500 sm:text-sm" placeholder="Digite a mensagem da notificação"></textarea>
+                    <textarea id="notif-message" rows={5} className="block w-full px-3 py-2 mt-1 text-gray-900 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-amber-500 focus:border-amber-500 sm:text-sm" placeholder="Digite a mensagem da notificação"></textarea>
                     <p className="mt-1 text-xs text-gray-500">0/500 caracteres</p>
                 </div>
 
