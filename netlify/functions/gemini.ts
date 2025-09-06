@@ -49,7 +49,7 @@ const handler: Handler = async (event) => {
     }
 
     // Validação de variáveis de ambiente com mensagens de erro claras
-    const apiKey = process.env.API_KEY; // CORREÇÃO: Usando a variável de ambiente padrão da plataforma.
+    const apiKey = process.env.API_KEY || process.env.VITE_GEMINI_API_KEY;
     
     // SOLUÇÃO: Hardcoding das chaves Supabase para contornar problemas de configuração de ambiente.
     const supabaseUrl = 'https://dmzuablzbrxzguxzivlr.supabase.co';
@@ -59,7 +59,7 @@ const handler: Handler = async (event) => {
     if (!apiKey) missingEnvs.push('API_KEY');
 
     if (missingEnvs.length > 0) {
-        const errorMsg = `O servidor não está configurado corretamente. Faltam as seguintes variáveis de ambiente: ${missingEnvs.join(', ')}. Certifique-se de que a API_KEY do Gemini está configurada no seu ambiente Netlify.`;
+        const errorMsg = `O servidor não está configurado corretamente. Faltam as seguintes variáveis de ambiente: API_KEY. Certifique-se de que a API_KEY do Gemini está configurada no seu ambiente Netlify.`;
         console.error(errorMsg);
         return {
             statusCode: 500,
