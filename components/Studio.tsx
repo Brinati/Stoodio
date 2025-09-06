@@ -2,27 +2,60 @@ import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import { Product, SnippetCategory, GeneratedImage, Snippet } from '../types';
 import { CopyIcon, ImageIcon, WandIcon } from './icons';
-import { enhancePrompt } from '../services/geminiService';
+import { enhancePrompt, generateImage, ImageSource } from '../services/geminiService';
 import { supabase } from '../services/supabaseClient';
 import EditImageModal from './EditImageModal';
 import LowTokenModal from './LowTokenModal';
-import { generateImage, ImageSource } from '../services/geminiService';
+
+// Helper functions to handle image data, kept local to the component
+const urlToImageSource = async (url: string): Promise<ImageSource> => {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Falha ao buscar imagem para edição.');
+    const blob = await response.blob();
+    const reader = new FileReader();
+    return new Promise((resolve, reject) => {
+        reader.onloadend = () => {
+            const base64 = (reader.result as string).split(',')[1];
+            resolve({ imageBase64: base64, mimeType: blob.type });
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+};
+
+const base64ToBlob = (base64: string, mimeType: string): Blob => {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
+};
 
 
 const Studio: React.FC = () => {
-    const { 
-        profile, products, logo, addGeneratedImage, generatedImages, setActivePage, session,
-        isGenerating, generationProgress, generationError, runGeneration, clearGenerationError, deductTokens
+    const {
+        profile, products, logo, generatedImages, setActivePage, session, addGeneratedImage, deductTokens,
+        isGenerating, generationProgress, generationError, runGeneration, runTextToImageGeneration, clearGenerationError
     } = useContext(AppContext)!;
     
     const [prompt, setPrompt] = useState<string>('');
-    const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
+    const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [isEnhancing, setIsEnhancing] = useState(false);
     const [validationError, setValidationError] = useState<string | null>(null);
     const [editingImage, setEditingImage] = useState<GeneratedImage | null>(null);
     const [isLowTokenModalOpen, setLowTokenModalOpen] = useState(false);
     const [requiredTokens, setRequiredTokens] = useState(0);
     const [selectedSnippetIds, setSelectedSnippetIds] = useState<Set<string>>(new Set());
+
+    const allSelectableProducts = useMemo(() => {
+        const p = [...products];
+        if (logo) {
+            p.unshift(logo); // Add logo to the beginning for selection
+        }
+        return p;
+    }, [products, logo]);
 
     const snippetCategories: SnippetCategory[] = useMemo(() => [
         {
@@ -71,10 +104,8 @@ const Studio: React.FC = () => {
             });
         });
 
-        if (newSelectedIds.size !== selectedSnippetIds.size || ![...newSelectedIds].every(id => selectedSnippetIds.has(id))) {
-           setSelectedSnippetIds(newSelectedIds);
-        }
-    }, [prompt, snippetCategories, selectedSnippetIds]);
+       setSelectedSnippetIds(newSelectedIds);
+    }, [prompt, snippetCategories]);
 
     const handleSnippetClick = (snippet: Snippet) => {
         const isSelected = selectedSnippetIds.has(snippet.id);
@@ -95,15 +126,7 @@ const Studio: React.FC = () => {
     };
 
     const handleProductSelection = (product: Product) => {
-        setValidationError(null);
-        setSelectedProducts(prevSelected => {
-            const isAlreadySelected = prevSelected.some(p => p.id === product.id);
-            if (isAlreadySelected) {
-                return prevSelected.filter(p => p.id !== product.id);
-            } else {
-                return [...prevSelected, product];
-            }
-        });
+        setSelectedProduct(prev => prev?.id === product.id ? null : product);
     };
     
     const handleEnhancePrompt = async () => {
@@ -120,13 +143,13 @@ const Studio: React.FC = () => {
     };
 
     const generationCost = useMemo(() => {
-        if (selectedProducts.length === 0) return 0;
-        return 16 + (selectedProducts.length - 1) * 4;
-    }, [selectedProducts.length]);
+        if (selectedProduct) return 16;
+        return 20;
+    }, [selectedProduct]);
 
     const handleGenerateClick = async () => {
-        if (!prompt || selectedProducts.length === 0) {
-            setValidationError("Por favor, descreva sua imagem e selecione pelo menos um produto ou logo.");
+        if (!prompt) {
+            setValidationError("Por favor, descreva a imagem que você quer criar.");
             return;
         }
         
@@ -138,86 +161,10 @@ const Studio: React.FC = () => {
         }
 
         setValidationError(null);
-        runGeneration(prompt, selectedProducts);
-    };
-
-    const urlToImageSource = async (url: string): Promise<ImageSource> => {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('Falha ao buscar imagem para edição.');
-        const blob = await response.blob();
-        const reader = new FileReader();
-        return new Promise((resolve, reject) => {
-            reader.onloadend = () => {
-                const base64 = (reader.result as string).split(',')[1];
-                resolve({ imageBase64: base64, mimeType: blob.type });
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    };
-    
-    const base64ToBlob = (base64: string, mimeType: string): Blob => {
-        const byteCharacters = atob(base64);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        return new Blob([byteArray], { type: mimeType });
-    };
-
-    const handleEditImage = async (image: GeneratedImage, newPrompt: string) => {
-        const cost = 16;
-        if ((profile?.token_balance ?? 0) < cost || !session?.user) {
-            throw new Error(`Tokens insuficientes ou usuário não logado.`);
-        }
-        
-        const success = await deductTokens(cost);
-        if(!success) throw new Error("Falha ao deduzir tokens para edição.");
-        
-        let referenceImage: ImageSource;
-        try {
-            referenceImage = await urlToImageSource(image.src);
-        } catch (error) {
-            console.error(error);
-            await deductTokens(-cost);
-            throw new Error("Não foi possível carregar a imagem original para edição.");
-        }
-
-        const result = await generateImage(newPrompt, referenceImage);
-
-        if (result) {
-            const blob = base64ToBlob(result.base64, result.mimeType);
-            const fileName = `${Date.now()}-edit.png`;
-            const filePath = `${session.user.id}/${fileName}`;
-            
-            const { error: uploadError } = await supabase.storage.from('generated_images').upload(filePath, blob);
-            if (uploadError) {
-                await deductTokens(-cost);
-                throw new Error("Falha ao fazer upload da nova imagem.");
-            }
-
-            const { data: dbData, error: dbError } = await supabase
-                .from('generated_images')
-                .insert({ user_id: session.user.id, prompt: newPrompt, image_path: filePath })
-                .select().single();
-
-            if (dbError) {
-                 await deductTokens(-cost);
-                throw new Error("Falha ao salvar metadados da nova imagem.");
-            }
-            
-            const { data: { publicUrl } } = supabase.storage.from('generated_images').getPublicUrl(filePath);
-
-            addGeneratedImage({
-                id: dbData.id,
-                src: publicUrl,
-                prompt: newPrompt,
-                image_path: filePath,
-            });
+        if (selectedProduct) {
+            runGeneration(prompt, [selectedProduct]);
         } else {
-            await deductTokens(-cost);
-            throw new Error("A IA não conseguiu gerar uma nova versão da imagem.");
+            runTextToImageGeneration(prompt);
         }
     };
 
@@ -234,165 +181,192 @@ const Studio: React.FC = () => {
         document.body.removeChild(link);
     };
 
+    const handleEditImage = async (image: GeneratedImage, newPrompt: string) => {
+        const cost = 16;
+        if ((profile?.token_balance ?? 0) < cost || !session?.user) {
+            throw new Error(`Tokens insuficientes ou usuário não logado.`);
+        }
+        
+        const success = await deductTokens(cost);
+        if(!success) throw new Error("Falha ao deduzir tokens para edição.");
+        
+        try {
+            const referenceImage = await urlToImageSource(image.src);
+            const result = await generateImage(newPrompt, referenceImage);
+
+            if (result) {
+                const blob = base64ToBlob(result.base64, result.mimeType);
+                const fileName = `${Date.now()}-edit.png`;
+                const filePath = `${session.user.id}/${fileName}`;
+                
+                const { error: uploadError } = await supabase.storage.from('generated_images').upload(filePath, blob);
+                if (uploadError) throw uploadError;
+
+                const { data: dbData, error: dbError } = await supabase
+                    .from('generated_images')
+                    .insert({ user_id: session.user.id, prompt: newPrompt, image_path: filePath })
+                    .select().single();
+                if (dbError) throw dbError;
+                
+                const { data: { publicUrl } } = supabase.storage.from('generated_images').getPublicUrl(filePath);
+
+                addGeneratedImage({ id: dbData.id, src: publicUrl, prompt: newPrompt, image_path: filePath });
+            } else {
+                throw new Error("A IA não conseguiu gerar uma nova versão da imagem.");
+            }
+        } catch(error) {
+             await deductTokens(-cost); // Refund tokens on failure
+             if (error instanceof Error) {
+                 throw new Error(error.message);
+             }
+             throw new Error("Ocorreu um erro desconhecido durante a edição.");
+        }
+    };
+
     return (
         <>
         {editingImage && <EditImageModal image={editingImage} onClose={() => setEditingImage(null)} onEdit={handleEditImage} onDownload={downloadImage} />}
         <LowTokenModal
             isOpen={isLowTokenModalOpen}
             onClose={() => setLowTokenModalOpen(false)}
-            onGoToPlans={() => {
-                setLowTokenModalOpen(false);
-                setActivePage('plans');
-            }}
+            onGoToPlans={() => { setLowTokenModalOpen(false); setActivePage('plans'); }}
             requiredTokens={requiredTokens}
             currentBalance={profile?.token_balance ?? 0}
         />
         <div className="flex h-full bg-gray-50">
             <main className="flex-1 p-4 md:p-6 overflow-y-auto">
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-                    {/* Left Column */}
-                    <div className="lg:col-span-3">
+                    {/* Left Column: Controls */}
+                    <div className="lg:col-span-3 space-y-6">
+                        
                         <div className="p-6 bg-white border border-gray-200 rounded-lg">
-                            <h2 className="flex items-center text-xl font-semibold text-gray-800"><i className="mr-2 text-amber-500 fas fa-wand-magic-sparkles"></i> AI Co-Pilot</h2>
-                            <p className="mt-1 text-sm text-gray-500">Descreva detalhes para criação da sua imagem</p>
+                            <h2 className="text-xl font-semibold text-gray-800">
+                                <span className="text-amber-500">Passo 1:</span> Escolha um Produto
+                            </h2>
+                            <p className="mt-1 text-sm text-gray-500">Selecione uma imagem de base para a sua criação. (Opcional)</p>
+                            
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-4">
+                                {allSelectableProducts.length > 0 ? allSelectableProducts.map(p => (
+                                    <button
+                                        key={p.id}
+                                        onClick={() => handleProductSelection(p)}
+                                        className={`relative block p-2 text-sm text-left border rounded-lg transition-all duration-200 focus:outline-none ${selectedProduct?.id === p.id ? 'border-amber-500 ring-2 ring-amber-200' : 'border-gray-200 bg-white hover:border-gray-400'}`}
+                                        aria-pressed={selectedProduct?.id === p.id}
+                                    >
+                                        <div className="aspect-square bg-gray-100 rounded-md overflow-hidden">
+                                           <img src={p.src} alt={p.name} className="object-contain w-full h-full" />
+                                        </div>
+                                        <p className="mt-2 text-xs font-medium text-gray-700 truncate">{p.type === 'logo' ? 'Logo' : p.name}</p>
+                                        {selectedProduct?.id === p.id && (
+                                            <div className="absolute top-1 right-1 flex items-center justify-center w-5 h-5 bg-amber-500 rounded-full text-white" aria-hidden="true">
+                                                <i className="fas fa-check text-xs"></i>
+                                            </div>
+                                        )}
+                                    </button>
+                                )) : (
+                                    <div className="col-span-full text-center p-4 border-2 border-dashed rounded-lg">
+                                        <p className="text-sm text-gray-500">Nenhum produto enviado.</p>
+                                        <button onClick={() => setActivePage('products')} className="mt-1 text-sm font-semibold text-amber-600 hover:underline">
+                                            Fazer upload de produtos
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="p-6 bg-white border border-gray-200 rounded-lg">
+                            <h2 className="text-xl font-semibold text-gray-800">
+                                <span className="text-amber-500">Passo 2:</span> Descreva sua Imagem
+                            </h2>
+                            <p className="mt-1 text-sm text-gray-500">Use os snippets abaixo ou escreva livremente.</p>
+                            
                             <textarea
                                 value={prompt}
-                                onChange={(e) => {
-                                    setPrompt(e.target.value);
-                                    if(validationError) setValidationError(null);
-                                }}
-                                placeholder="Descreva sua imagem em detalhes..."
-                                className="w-full h-32 p-3 mt-4 text-gray-700 bg-white border border-gray-300 rounded-md focus:ring-amber-500 focus:border-amber-500"
+                                onChange={(e) => { setPrompt(e.target.value); if(validationError) setValidationError(null); }}
+                                placeholder="Ex: um pódio de mármore branco, com folhas tropicais ao fundo e luz do sol..."
+                                className="w-full h-28 p-3 mt-4 text-gray-700 bg-white border border-gray-300 rounded-md focus:ring-amber-500 focus:border-amber-500"
+                                aria-label="Prompt de imagem"
                             />
-                             <div className="flex items-center justify-between mt-2">
+                            <div className="flex items-center justify-between mt-2">
                                 <button onClick={copyPrompt} className="flex items-center text-sm font-medium text-gray-600 hover:text-amber-600">
                                     <CopyIcon className="w-4 h-4 mr-1" /> Copiar
                                 </button>
                                 <button
                                     onClick={handleEnhancePrompt}
                                     disabled={!prompt || isEnhancing}
-                                    className="flex items-center px-3 py-1 text-sm font-semibold text-amber-700 bg-amber-100 rounded-md hover:bg-amber-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+                                    className="flex items-center px-3 py-1 text-sm font-semibold text-amber-700 bg-amber-100 rounded-md hover:bg-amber-200 disabled:bg-gray-100 disabled:text-gray-400"
                                 >
-                                    {isEnhancing ? (
-                                        <svg className="w-4 h-4 mr-2 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                        </svg>
-                                    ) : (
-                                        <WandIcon className="w-4 h-4 mr-2" />
-                                    )}
+                                    <WandIcon className={`w-4 h-4 mr-2 ${isEnhancing ? 'animate-spin' : ''}`} />
                                     <span>{isEnhancing ? 'Aprimorando...' : 'Aprimorar com IA'}</span>
                                 </button>
                             </div>
-                        </div>
 
-                        <div className="p-6 mt-6 bg-white border border-gray-200 rounded-lg">
-                             <h3 className="font-semibold text-gray-800">Snippets para inspiração:</h3>
-
-                            <div className="mt-4">
-                                <h4 className="font-semibold text-gray-600">Seus produtos</h4>
-                                <div className="flex flex-wrap gap-3 mt-2">
-                                    {products.length > 0 ? products.map(p => (
-                                        <button
-                                            key={p.id}
-                                            onClick={() => handleProductSelection(p)}
-                                            className={`flex items-center p-2 text-sm text-left border rounded-lg transition-colors ${selectedProducts.some(sp => sp.id === p.id) ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-200' : 'border-gray-300 bg-white hover:bg-gray-50'}`}
-                                        >
-                                            <img src={p.src || `data:${p.mimeType};base64,${p.imageBase64}`} alt={p.name} className="object-contain w-14 h-14 mr-3" />
-                                            <span className="font-medium text-gray-700">{p.name}</span>
-                                        </button>
-                                    )) : <p className="text-sm text-gray-500">Nenhum produto enviado. Vá para a aba 'Produtos' para fazer upload.</p>}
-                                </div>
+                            <div className="mt-4 space-y-4">
+                                {snippetCategories.map(category => (
+                                    <div key={category.title}>
+                                        <h4 className="flex items-center font-semibold text-gray-600">{category.icon}{category.title}</h4>
+                                        <div className="flex flex-wrap gap-2 mt-2">
+                                            {category.snippets.map(snippet => {
+                                                const isSelected = selectedSnippetIds.has(snippet.id);
+                                                return (
+                                                    <button
+                                                        key={snippet.id}
+                                                        onClick={() => handleSnippetClick(snippet)}
+                                                        className={`flex items-center justify-center px-3 py-2 text-sm rounded-full transition-all duration-200 ${
+                                                            isSelected 
+                                                                ? 'bg-amber-500 border-amber-500 text-white font-semibold' 
+                                                                : 'bg-gray-100 border border-gray-200 text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                        aria-pressed={isSelected}
+                                                    >
+                                                        {snippet.text}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
-                            
-                            {logo && (
-                                <div className="mt-6">
-                                    <h4 className="font-semibold text-gray-600">Logo</h4>
-                                    <div className="flex flex-wrap gap-3 mt-2">
-                                        <button
-                                            onClick={() => handleProductSelection(logo)}
-                                            className={`flex items-center p-2 text-sm text-left border rounded-lg transition-colors ${selectedProducts.some(sp => sp.id === logo.id) ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-200' : 'border-gray-300 bg-white hover:bg-gray-50'}`}
-                                        >
-                                            <img src={logo.src} alt={logo.name} className="object-contain w-14 h-14 mr-3" />
-                                            <span className="font-medium text-gray-700">{logo.name}</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {snippetCategories.map(category => (
-                                <div className="mt-4" key={category.title}>
-                                    <h4 className="flex items-center font-semibold text-gray-600">{category.icon}{category.title}</h4>
-                                    <div className="flex flex-wrap gap-2 mt-2">
-                                        {category.snippets.map(snippet => {
-                                            const isSelected = selectedSnippetIds.has(snippet.id);
-                                            return (
-                                                <button
-                                                    key={snippet.id}
-                                                    onClick={() => handleSnippetClick(snippet)}
-                                                    className={`flex items-center justify-center px-3 py-2 text-sm rounded-md transition-all duration-200 ${
-                                                        isSelected 
-                                                            ? 'bg-amber-100 border-amber-300 border font-semibold text-amber-800' 
-                                                            : 'bg-gray-100 border border-gray-200 text-gray-700 hover:bg-gray-200 hover:border-gray-300'
-                                                    }`}
-                                                >
-                                                    {isSelected && <i className="mr-2 fas fa-check"></i>}
-                                                    {snippet.text}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            ))}
                         </div>
 
-                         <div className="mt-6">
-                            {validationError && (
-                                <div className="p-3 mb-4 text-sm text-center text-red-800 bg-red-100 rounded-md">
+                        <div className="mt-6">
+                             {validationError && (
+                                <div className="p-3 mb-4 text-sm text-center text-red-800 bg-red-100 rounded-md" role="alert">
                                     {validationError}
                                 </div>
                             )}
                             <button
                                 onClick={handleGenerateClick}
-                                disabled={!prompt || selectedProducts.length === 0 || isGenerating}
-                                className="w-full px-6 py-3 text-lg font-semibold text-white bg-amber-500 rounded-lg shadow-md disabled:bg-gray-400 disabled:cursor-not-allowed hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500"
+                                disabled={!prompt || isGenerating}
+                                className="w-full px-6 py-4 text-lg font-bold text-white bg-amber-500 rounded-lg shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500"
                             >
-                                {isGenerating ? `Gerando ${generationProgress.completed} de ${generationProgress.total}...` : `Gerar Imagem (${generationCost} tokens)`}
+                                {isGenerating ? 'Gerando, aguarde...' : `Gerar Imagem (${generationCost} tokens)`}
                             </button>
                         </div>
-
                     </div>
 
-                    {/* Right Column */}
+                    {/* Right Column: Results */}
                     <div className="lg:col-span-2">
                         <div className="lg:sticky lg:top-6">
                              <div className="p-6 bg-white border border-gray-200 rounded-lg">
-                                <h2 className="text-xl font-semibold text-gray-800">Imagens Geradas</h2>
-                                <p className="mt-1 text-sm text-gray-500">As 6 imagens mais recentes</p>
+                                <h2 className="text-xl font-semibold text-gray-800">Resultado</h2>
+                                <p className="mt-1 text-sm text-gray-500">As 6 imagens mais recentes aparecerão aqui.</p>
                                 
                                 {isGenerating && (
-                                    <div className="mt-4">
+                                    <div className="mt-4" aria-live="polite">
                                         <p className="text-sm font-semibold text-center text-gray-600">
-                                            {generationProgress.total > 0 && generationProgress.completed < generationProgress.total
-                                                ? `Processando ${generationProgress.completed + 1} de ${generationProgress.total}...`
-                                                : "Finalizando..."
-                                            }
+                                            {generationProgress.total > 1 ? `Processando ${generationProgress.completed + 1} de ${generationProgress.total}...` : "Sua imagem está sendo criada..."}
                                         </p>
                                         <div className="w-full h-2 mt-2 overflow-hidden bg-gray-200 rounded-full">
-                                            <div 
-                                                className="h-full bg-amber-500 transition-all duration-300" 
-                                                style={{ width: `${generationProgress.total > 0 ? (generationProgress.completed / generationProgress.total) * 100 : 0}%` }}
-                                            />
+                                            <div className="h-full bg-amber-500 transition-all duration-300" style={{ width: `${generationProgress.total > 0 ? (generationProgress.completed / generationProgress.total) * 100 : 0}%` }}/>
                                         </div>
                                     </div>
                                 )}
                                 
                                 {generationError && !isGenerating && (
-                                     <div className="relative p-3 pl-4 pr-10 mt-4 text-sm text-left text-red-800 bg-red-100 rounded-md">
-                                        <strong className="font-semibold">Erro na Geração:</strong> {generationError}
-                                        <button onClick={clearGenerationError} className="absolute top-1/2 right-3 transform -translate-y-1/2 text-red-700 hover:text-red-900" aria-label="Fechar erro">
-                                            <i className="fas fa-times"></i>
-                                        </button>
+                                     <div className="relative p-3 pl-4 pr-10 mt-4 text-sm text-left text-red-800 bg-red-100 rounded-md" role="alert">
+                                        <strong className="font-semibold">Erro:</strong> {generationError}
+                                        <button onClick={clearGenerationError} className="absolute top-1/2 right-3 transform -translate-y-1/2 text-red-700 hover:text-red-900" aria-label="Fechar"><i className="fas fa-times"></i></button>
                                     </div>
                                 )}
 
@@ -406,10 +380,10 @@ const Studio: React.FC = () => {
                                 {generatedImages.length > 0 && (
                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 max-h-[70vh] overflow-y-auto pr-2">
                                         {generatedImages.slice(0, 6).map(image => (
-                                             <div key={image.id} className="relative overflow-hidden border border-gray-200 rounded-lg group">
-                                                 <img src={image.src} alt={image.prompt} className="object-cover w-full h-auto cursor-pointer" onClick={() => setEditingImage(image)} />
+                                             <div key={image.id} className="relative overflow-hidden border border-gray-200 rounded-lg group aspect-square">
+                                                 <img src={image.src} alt={image.prompt} className="object-cover w-full h-full cursor-pointer" onClick={() => setEditingImage(image)} />
                                                  <div className="absolute inset-0 flex items-center justify-center transition-opacity duration-300 bg-black bg-opacity-0 pointer-events-none group-hover:bg-opacity-50">
-                                                     <button onClick={() => setEditingImage(image)} className="px-4 py-2 text-sm font-semibold text-white transition-opacity duration-300 bg-gray-800 bg-opacity-80 rounded-md opacity-0 pointer-events-auto group-hover:opacity-100 hover:bg-opacity-100">
+                                                     <button onClick={() => setEditingImage(image)} className="px-4 py-2 text-sm font-semibold text-white transition-opacity duration-300 bg-gray-800 bg-opacity-80 rounded-md opacity-0 pointer-events-auto group-hover:opacity-100">
                                                          Ver & Editar
                                                      </button>
                                                  </div>
@@ -419,10 +393,7 @@ const Studio: React.FC = () => {
                                 )}
                                 {generatedImages.length > 6 && (
                                     <div className="mt-4 text-center">
-                                        <button 
-                                            onClick={() => setActivePage('gallery')}
-                                            className="w-full px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
-                                        >
+                                        <button onClick={() => setActivePage('gallery')} className="w-full px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
                                             Ver todas na Galeria ({generatedImages.length})
                                         </button>
                                     </div>

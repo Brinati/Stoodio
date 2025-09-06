@@ -2,27 +2,6 @@ import { Handler } from '@netlify/functions';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { createClient } from '@supabase/supabase-js';
 
-// Gemini AI setup
-const apiKey = process.env.API_KEY;
-if (!apiKey) {
-    throw new Error("A variável de ambiente API_KEY não está definida para a função serverless.");
-}
-const ai = new GoogleGenAI({ apiKey });
-
-// Supabase Admin setup
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceRoleKey) {
-    throw new Error("As variáveis de ambiente SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY são necessárias.");
-}
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
-    auth: {
-        autoRefreshToken: false,
-        persistSession: false
-    }
-});
-
 // System instruction for prompt enhancement
 const enhanceSystemInstruction = `Você é um otimizador de prompts para geração de imagens no Nano-banana.
 Receberá um prompt livre escrito pelo usuário.
@@ -59,6 +38,20 @@ const handler: Handler = async (event) => {
         'Access-Control-Allow-Headers': 'Content-Type',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
     };
+
+    // Environment variable check
+    const apiKey = process.env.API_KEY;
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!apiKey || !supabaseUrl || !supabaseServiceRoleKey) {
+        console.error("Missing required environment variables.");
+        return {
+            statusCode: 500,
+            headers,
+            body: JSON.stringify({ error: "Missing required server configuration." }),
+        };
+    }
     
     if (event.httpMethod === 'OPTIONS') {
         return {
@@ -73,6 +66,15 @@ const handler: Handler = async (event) => {
     }
 
     try {
+        // Initialize clients now that ENV vars are confirmed
+        const ai = new GoogleGenAI({ apiKey });
+        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+            auth: {
+                autoRefreshToken: false,
+                persistSession: false
+            }
+        });
+
         const { action, payload } = JSON.parse(event.body);
 
         if (action === 'updateUserTokens') {
@@ -109,7 +111,7 @@ const handler: Handler = async (event) => {
                 return { statusCode: 400, headers, body: JSON.stringify({ error: 'Prompt ou referenceImage ausente' }) };
             }
 
-            // Step 1: Enhance the prompt automatically
+            // Etapa 1: Aprimorar o prompt automaticamente
             const enhanceResponse = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: prompt,
@@ -119,7 +121,7 @@ const handler: Handler = async (event) => {
             });
             const enhancedPrompt = enhanceResponse.text.trim();
 
-            // Step 2: Use the enhanced prompt to generate the image
+            // Etapa 2: Usar o prompt aprimorado para gerar a imagem
             const imagePart = {
                 inlineData: {
                     data: referenceImage.imageBase64,
@@ -130,7 +132,7 @@ const handler: Handler = async (event) => {
 
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash-image-preview',
-                contents: { parts: [imagePart, textPart] },
+                contents: [{ role: 'user', parts: [imagePart, textPart] }],
                 config: {
                     responseModalities: [Modality.IMAGE, Modality.TEXT],
                 },
@@ -155,6 +157,42 @@ const handler: Handler = async (event) => {
             }
         
             throw new Error("Nenhum dado de imagem encontrado na resposta da IA. O modelo pode não ter conseguido processar o seu pedido.");
+
+        } else if (action === 'generateImageFromText') {
+            const { prompt } = payload;
+            if (!prompt) {
+                return { statusCode: 400, headers, body: JSON.stringify({ error: 'Prompt ausente' }) };
+            }
+            
+            const enhanceResponse = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+                config: {
+                    systemInstruction: enhanceSystemInstruction,
+                },
+            });
+            const enhancedPrompt = enhanceResponse.text.trim();
+
+            const response = await ai.models.generateImages({
+                model: 'imagen-4.0-generate-001',
+                prompt: enhancedPrompt,
+                config: {
+                    numberOfImages: 1,
+                    outputMimeType: 'image/jpeg',
+                },
+            });
+    
+            const base64ImageBytes = response.generatedImages?.[0]?.image?.imageBytes;
+    
+            if (base64ImageBytes) {
+                return {
+                    statusCode: 200,
+                    headers,
+                    body: JSON.stringify({ base64: base64ImageBytes, mimeType: 'image/jpeg' }),
+                };
+            }
+            
+            throw new Error("Nenhum dado de imagem encontrado na resposta da IA para text-to-image.");
 
         } else if (action === 'enhancePrompt') {
             const { prompt } = payload;

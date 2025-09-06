@@ -8,7 +8,7 @@ export interface ImageSource {
 
 const callApi = async (action: string, payload: any) => {
     try {
-        const response = await fetch('/.netlify/functions/gemini', {
+        const response = await fetch('/api/gemini', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -39,6 +39,16 @@ export const generateImage = async (prompt: string, referenceImage: ImageSource)
         console.error("Error generating image:", error);
         // Cria uma mensagem de erro mais amigável.
         throw new Error("Falha ao gerar a imagem. Verifique seu prompt ou tente novamente mais tarde.");
+    }
+};
+
+export const generateImageFromText = async (prompt: string): Promise<{base64: string, mimeType: string} | null> => {
+    try {
+        const result = await callApi('generateImageFromText', { prompt });
+        return result;
+    } catch (error) {
+        console.error("Error generating image from text:", error);
+        throw new Error("Falha ao gerar a imagem a partir do texto. Tente novamente mais tarde.");
     }
 };
 

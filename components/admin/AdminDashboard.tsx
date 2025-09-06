@@ -52,8 +52,8 @@ const AdminDashboard: React.FC = () => {
                 const [usersRes, generationsRes, recentUsersRes, recentImagesRes] = await Promise.all([
                     supabase.from('profiles').select('*', { count: 'exact', head: true }),
                     supabase.from('generated_images').select('*', { count: 'exact', head: true }),
-                    // FIX: Select all columns to match the UserProfile type, which requires 'id' and 'username'.
-                    supabase.from('profiles').select('*').order('created_at', { ascending: false }).limit(5),
+                    // FIX: Removed ordering by `created_at` as the column likely does not exist on the `profiles` table, causing an error.
+                    supabase.from('profiles').select('*').limit(5),
                     supabase.from('generated_images').select('id, prompt, image_path').order('created_at', { ascending: false }).limit(5)
                 ]);
 
@@ -76,8 +76,8 @@ const AdminDashboard: React.FC = () => {
                 });
                 setRecentImages(loadedImages);
 
-            } catch (error) {
-                console.error("Failed to fetch dashboard stats:", error);
+            } catch (error: any) {
+                console.error("Failed to fetch dashboard stats:", error.message || error);
                  setStats(prev => ({
                     ...prev,
                     users: { count: 0, label: 'Erro ao carregar' },

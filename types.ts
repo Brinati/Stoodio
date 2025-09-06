@@ -60,5 +60,6 @@ export interface AppContextType {
   generationProgress: { completed: number; total: number };
   generationError: string | null;
   runGeneration: (prompt: string, products: Product[]) => Promise<void>;
+  runTextToImageGeneration: (prompt: string) => Promise<void>;
   clearGenerationError: () => void;
 }

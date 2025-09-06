@@ -15,7 +15,7 @@ import { AppContext } from './context/AppContext';
 // FIX: Changed to a type-only import for `Session` to resolve TypeScript module resolution errors.
 import type { Session } from '@supabase/supabase-js';
 import UserSettings from './components/UserSettings';
-import { generateImage, ImageSource } from './services/geminiService';
+import { generateImage, generateImageFromText, ImageSource } from './services/geminiService';
 
 
 const PlaceholderPage: React.FC<{title: string}> = ({title}) => (
@@ -323,6 +323,71 @@ const App: React.FC = () => {
         }
     }, [session, deductTokens, addGeneratedImage]);
 
+    const runTextToImageGeneration = useCallback(async (prompt: string) => {
+        if (!session?.user) {
+            setGenerationError("Usuário não autenticado. Por favor, faça login novamente.");
+            return;
+        }
+
+        const cost = 20; // Custo fixo para text-to-image
+
+        setIsGenerating(true);
+        setGenerationProgress({ completed: 0, total: 1 });
+        setGenerationError(null);
+        let tokensDeducted = false;
+
+        try {
+            const success = await deductTokens(cost);
+            if (!success) {
+                throw new Error("Falha ao deduzir tokens. Saldo insuficiente ou erro no servidor.");
+            }
+            tokensDeducted = true;
+            
+            const result = await generateImageFromText(prompt);
+
+            if (!result || !result.base64) {
+                throw new Error(`A IA não conseguiu gerar uma imagem. Tente um prompt diferente.`);
+            }
+            
+            const blob = base64ToBlob(result.base64, result.mimeType);
+            const fileName = `${Date.now()}-text-to-image.png`;
+            const filePath = `${session.user.id}/${fileName}`;
+            
+            const { error: uploadError } = await supabase.storage.from('generated_images').upload(filePath, blob);
+            if (uploadError) throw new Error(`Falha no upload para o Supabase: ${uploadError.message}`);
+            
+            const { data: dbData, error: dbError } = await supabase
+                .from('generated_images')
+                .insert({ user_id: session.user.id, prompt, image_path: filePath })
+                .select().single();
+            
+            if (dbError) throw new Error(`Falha ao salvar no banco de dados: ${dbError.message}`);
+
+            const { data: { publicUrl } } = supabase.storage.from('generated_images').getPublicUrl(filePath);
+
+            addGeneratedImage({
+                id: dbData.id,
+                src: publicUrl,
+                prompt: prompt,
+                image_path: filePath,
+            });
+            
+            setGenerationProgress({ completed: 1, total: 1 });
+
+        } catch (err: any) {
+            console.error("Text-to-image generation failed:", err);
+            const errorMessage = err.message || "Ocorreu um erro desconhecido ao gerar a imagem.";
+            setGenerationError(errorMessage);
+            
+            if (tokensDeducted) {
+                await deductTokens(-cost);
+                setGenerationError(prev => `${prev || errorMessage} Seus tokens foram devolvidos.`);
+            }
+        } finally {
+            setIsGenerating(false);
+        }
+    }, [session, deductTokens, addGeneratedImage]);
+
     const clearGenerationError = useCallback(() => {
         setGenerationError(null);
     }, []);
@@ -375,7 +440,7 @@ const App: React.FC = () => {
     const contextValue: AppContextType = {
         session, profile, products, logo, addProducts, clearProducts, addLogo, removeLogo,
         generatedImages, addGeneratedImage, deductTokens, setActivePage,
-        isGenerating, generationProgress, generationError, runGeneration, clearGenerationError
+        isGenerating, generationProgress, generationError, runGeneration, runTextToImageGeneration, clearGenerationError
     };
 
     return (
