@@ -140,7 +140,7 @@ const handler: Handler = async (event) => {
 
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash-image-preview',
-                contents: [{ role: 'user', parts: [imagePart, textPart] }],
+                contents: { parts: [imagePart, textPart] },
                 config: {
                     responseModalities: [Modality.IMAGE, Modality.TEXT],
                 },

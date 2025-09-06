@@ -8,7 +8,7 @@ export interface ImageSource {
 
 const callApi = async (action: string, payload: any) => {
     try {
-        const response = await fetch('/api/gemini', {
+        const response = await fetch('/.netlify/functions/gemini', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
